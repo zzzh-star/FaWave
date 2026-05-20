@@ -62,14 +62,12 @@ class ValueCard(QWidget):
         super().__init__()
         self.compact = compact
         self.setObjectName("valCard")
-        layout = QVBoxLayout(self)
+
+        layout = QGridLayout(self)
         margins = 6 if compact else 12
         layout.setContentsMargins(margins, margins, margins, margins)
-        layout.setSpacing(2 if compact else 6)
-
-        # Color indicator + Title
-        title_layout = QHBoxLayout()
-        title_layout.setContentsMargins(0, 0, 0, 0)
+        layout.setHorizontalSpacing(4)
+        layout.setVerticalSpacing(2 if compact else 6)
 
         color_indicator = QLabel()
         ind_size = 8 if compact else 10
@@ -79,28 +77,22 @@ class ValueCard(QWidget):
         title_label = QLabel(title)
         title_label.setProperty("class", "channel-title-compact" if compact else "channel-title")
 
-        title_layout.addWidget(color_indicator)
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-        layout.addLayout(title_layout)
-
-        # Value + Unit
-        val_layout = QHBoxLayout()
-        val_layout.setContentsMargins(0, 0, 0, 0)
-        val_layout.setSpacing(4)
+        layout.addWidget(color_indicator, 0, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(title_label, 0, 1, 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
 
         self.val_label = QLabel("0.0000")
         self.val_label.setProperty("class", "channel-value-compact" if compact else "channel-value")
-        self.val_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.val_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.val_label.setMinimumWidth(80)
 
         unit_label = QLabel(unit)
         unit_label.setProperty("class", "channel-unit-compact" if compact else "channel-unit")
         unit_label.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
 
-        val_layout.addWidget(self.val_label)
-        val_layout.addWidget(unit_label)
-        val_layout.addStretch()
-        layout.addLayout(val_layout)
+        layout.addWidget(self.val_label, 1, 0, 1, 2, Qt.AlignLeft | Qt.AlignVCenter)
+        layout.addWidget(unit_label, 1, 2, Qt.AlignLeft | Qt.AlignBottom)
+
+        layout.setColumnStretch(1, 1)
 
     def set_value(self, val):
         self.val_label.setText(f"{val:.4f}")
@@ -110,25 +102,32 @@ class AlarmCard(QWidget):
         super().__init__()
         self.setObjectName("alarmCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(4)
+
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
 
         self.title_label = QLabel(title)
         self.title_label.setProperty("class", "alarm-title")
 
-        self.status_label = QLabel("状态：未配置")
+        self.status_label = QLabel("未配置")
         self.status_label.setProperty("class", "alarm-status-unconfigured")
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
-        self.desc_label = QLabel("说明：等待规则配置")
+        header_layout.addWidget(self.title_label)
+        header_layout.addWidget(self.status_label)
+
+        self.desc_label = QLabel("等待规则配置")
         self.desc_label.setProperty("class", "alarm-desc")
         self.desc_label.setWordWrap(True)
 
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.status_label)
+        layout.addLayout(header_layout)
         layout.addWidget(self.desc_label)
 
     def set_status(self, status, desc):
-        self.status_label.setText(f"状态：{status}")
-        self.desc_label.setText(f"说明：{desc}")
+        self.status_label.setText(f"{status}")
+        self.desc_label.setText(f"{desc}")
 
         if status == "正常":
             self.status_label.setProperty("class", "alarm-status-normal")
@@ -365,8 +364,8 @@ class MainWindow(QMainWindow):
         self.setup_voltage_plot(plot_splitter)
         self.setup_force_plot(plot_splitter)
 
-        # Set initial sizes (e.g. 55% / 45%)
-        plot_splitter.setSizes([550, 450])
+        # Set initial sizes heavily favoring the plots with approximately 60/40 ratio
+        plot_splitter.setSizes([600, 400])
 
         center_layout.addWidget(plot_splitter, stretch=1)
         parent_layout.addWidget(center_panel, stretch=1)
@@ -374,18 +373,21 @@ class MainWindow(QMainWindow):
     def setup_value_cards(self, parent_layout):
         overview_card = QWidget()
         overview_card.setProperty("class", "Card")
-        overview_card.setMinimumHeight(135)
-        overview_card.setMaximumHeight(165)
+        overview_card.setMinimumHeight(150)
+        overview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QVBoxLayout(overview_card)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(8)
+        layout.setSpacing(12)
 
         title = QLabel("实时数据总览")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
         layout.addWidget(title)
 
         grid = QGridLayout()
-        grid.setSpacing(8)
+        grid.setSpacing(10)
+
+        # Row 1 Headers
+        grid.addWidget(QLabel("<b>原始电压</b>"), 0, 0, 1, 4)
 
         # Voltages
         self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB", compact=True)
@@ -393,39 +395,39 @@ class MainWindow(QMainWindow):
         self.card_ch3 = ValueCard("通道 3", "mV", "#10B981", compact=True)
         self.card_ch4 = ValueCard("通道 4", "mV", "#8B5CF6", compact=True)
 
-        grid.addWidget(self.card_ch1, 0, 0)
-        grid.addWidget(self.card_ch2, 0, 1)
-        grid.addWidget(self.card_ch3, 0, 2)
-        grid.addWidget(self.card_ch4, 0, 3)
+        grid.addWidget(self.card_ch1, 1, 0)
+        grid.addWidget(self.card_ch2, 1, 1)
+        grid.addWidget(self.card_ch3, 1, 2)
+        grid.addWidget(self.card_ch4, 1, 3)
 
-        # Forces
-        # Add Decouple Status directly beneath the Row 1 layout but before Row 2 to simulate subheaders since we use a flat Grid
-        f_title = QLabel("三维力")
-        f_title.setProperty("class", "sys-stat-label")
+        # Row 2 Headers
+        f_header = QHBoxLayout()
+        f_header.setContentsMargins(0, 0, 0, 0)
+        f_title = QLabel("<b>三维力</b>")
         f_status = QLabel("解耦未启用")
         f_status.setStyleSheet("color: #94A3B8; font-size: 12px;")
-
-        f_header = QHBoxLayout()
         f_header.addWidget(f_title)
         f_header.addWidget(f_status)
         f_header.addStretch()
-
         f_header_widget = QWidget()
         f_header_widget.setLayout(f_header)
-        layout.addWidget(f_header_widget)
+        grid.addWidget(f_header_widget, 2, 0, 1, 4)
 
+        # Forces
         self.card_fx = ValueCard("Fx", "N", "#0EA5E9", compact=True)
         self.card_fy = ValueCard("Fy", "N", "#F59E0B", compact=True)
         self.card_fz = ValueCard("Fz", "N", "#EF4444", compact=True)
 
-        grid.addWidget(self.card_fx, 1, 0)
-        grid.addWidget(self.card_fy, 1, 1)
-        grid.addWidget(self.card_fz, 1, 2)
+        grid.addWidget(self.card_fx, 3, 0)
+        grid.addWidget(self.card_fy, 3, 1)
+        grid.addWidget(self.card_fz, 3, 2)
 
-        # Blank placeholder for bottom right corner to maintain equal layout
+        # Blank placeholder for bottom right corner to maintain equal layout widths
         spacer_card = QWidget()
-        spacer_card.setProperty("class", "valCard")
-        grid.addWidget(spacer_card, 1, 3)
+        grid.addWidget(spacer_card, 3, 3)
+
+        for i in range(4):
+            grid.setColumnStretch(i, 1)
 
         layout.addLayout(grid)
         parent_layout.addWidget(overview_card, stretch=0)
@@ -525,17 +527,23 @@ class MainWindow(QMainWindow):
         parent_splitter.addWidget(container)
 
     def setup_right_panel(self, parent_layout):
+        right_scroll = QScrollArea()
+        right_scroll.setMinimumWidth(300)
+        right_scroll.setMaximumWidth(360)
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
         right_panel = QWidget()
-        right_panel.setFixedWidth(300)
         right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setContentsMargins(10, 0, 0, 0)
         right_layout.setSpacing(16)
 
         self.setup_alarm_panel(right_layout)
         self.setup_system_status_panel(right_layout)
 
         right_layout.addStretch()
-        parent_layout.addWidget(right_panel)
+        right_scroll.setWidget(right_panel)
+        parent_layout.addWidget(right_scroll)
 
     def setup_alarm_panel(self, parent_layout):
         alarm_card = QWidget()
