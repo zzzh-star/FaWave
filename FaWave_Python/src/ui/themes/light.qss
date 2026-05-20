@@ -20,16 +20,16 @@ QScrollArea > QWidget > QWidget {
 
 QScrollBar:vertical {
     background: transparent;
-    width: 8px;
-    margin: 2px;
+    width: 6px;
+    margin: 0px;
 }
 QScrollBar::handle:vertical {
-    background: #CBD5E1;
-    border-radius: 4px;
+    background: rgba(203, 213, 225, 0.5); /* #CBD5E1 faint */
+    border-radius: 3px;
     min-height: 40px;
 }
 QScrollBar::handle:vertical:hover {
-    background: #94A3B8;
+    background: rgba(148, 163, 184, 0.8); /* #94A3B8 */
 }
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {
@@ -43,16 +43,16 @@ QScrollBar::sub-page:vertical {
 
 QScrollBar:horizontal {
     background: transparent;
-    height: 8px;
-    margin: 2px;
+    height: 6px;
+    margin: 0px;
 }
 QScrollBar::handle:horizontal {
-    background: #CBD5E1;
-    border-radius: 4px;
+    background: rgba(203, 213, 225, 0.5);
+    border-radius: 3px;
     min-width: 40px;
 }
 QScrollBar::handle:horizontal:hover {
-    background: #94A3B8;
+    background: rgba(148, 163, 184, 0.8);
 }
 QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {
@@ -133,6 +133,36 @@ QComboBox QAbstractItemView::item {
 QComboBox QListView {
     background-color: #FFFFFF;
     border: 1px solid #DDE5F0;
+}
+
+/* Segmented Control */
+QWidget#segmentedControl {
+    background-color: #F8FAFC;
+    border: 1px solid #DDE5F0;
+    border-radius: 8px;
+}
+
+QPushButton.segmentButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    color: #475569;
+    font-weight: 600;
+}
+
+QPushButton.segmentButton:hover {
+    background-color: #E2E8F0;
+}
+
+QPushButton.segmentButton:checked {
+    background-color: #2563EB;
+    color: #FFFFFF;
+}
+
+QPushButton.segmentButton:disabled {
+    background-color: transparent;
+    color: #94A3B8;
 }
 
 /* Buttons */
@@ -238,6 +268,25 @@ QLabel.channel-value {
 
 QLabel.channel-unit {
     font-size: 13px;
+    color: #475569;
+    font-weight: bold;
+}
+
+QLabel.channel-title-compact {
+    font-size: 12px;
+    color: #475569;
+    font-weight: 600;
+}
+
+QLabel.channel-value-compact {
+    font-family: "Segoe UI", "Roboto Mono", Consolas, monospace;
+    font-size: 20px;
+    font-weight: bold;
+    color: #0F172A;
+}
+
+QLabel.channel-unit-compact {
+    font-size: 12px;
     color: #475569;
     font-weight: bold;
 }

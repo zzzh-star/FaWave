@@ -1,12 +1,11 @@
 import os
 from datetime import datetime
 import time
-import time
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                               QLabel, QLineEdit, QComboBox, QPushButton, QCheckBox,
+                               QLabel, QLineEdit, QPushButton, QCheckBox,
                                QGroupBox, QGridLayout, QFormLayout, QFileDialog, QStatusBar, QMessageBox,
-                               QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame, QListView)
-from PySide6.QtCore import Qt, QTimer, QSize
+                               QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame, QListView, QButtonGroup)
+from PySide6.QtCore import Qt, QTimer, QSize, Signal
 from PySide6.QtGui import QFontMetrics
 import pyqtgraph as pg
 
@@ -14,21 +13,70 @@ from ..workers.acquisition_worker import AcquisitionWorker
 from ..data.data_buffer import DataBuffer
 from ..data.data_recorder import DataRecorder
 
-class ValueCard(QWidget):
-    def __init__(self, title, unit, color):
+class SegmentedControl(QWidget):
+    currentChanged = Signal(str)
+
+    def __init__(self, options, current=None):
         super().__init__()
+        self.setObjectName("segmentedControl")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(2)
+
+        self.group = QButtonGroup(self)
+        self.group.setExclusive(True)
+        self.group.buttonClicked.connect(self._on_button_clicked)
+
+        self._buttons = {}
+        for idx, option in enumerate(options):
+            btn = QPushButton(option)
+            btn.setCheckable(True)
+            btn.setProperty("class", "segmentButton")
+            self.group.addButton(btn, idx)
+            layout.addWidget(btn)
+            self._buttons[option] = btn
+
+            if current and option == current:
+                btn.setChecked(True)
+
+        if not current and options:
+            self._buttons[options[0]].setChecked(True)
+
+    def currentText(self):
+        btn = self.group.checkedButton()
+        if btn:
+            return btn.text()
+        return ""
+
+    def setCurrentText(self, text):
+        if text in self._buttons:
+            self._buttons[text].setChecked(True)
+
+    def _on_button_clicked(self, button):
+        self.currentChanged.emit(button.text())
+
+
+class ValueCard(QWidget):
+    def __init__(self, title, unit, color, compact=False):
+        super().__init__()
+        self.compact = compact
         self.setObjectName("valCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
+        margins = 6 if compact else 12
+        layout.setContentsMargins(margins, margins, margins, margins)
+        layout.setSpacing(2 if compact else 6)
 
         # Color indicator + Title
         title_layout = QHBoxLayout()
+        title_layout.setContentsMargins(0, 0, 0, 0)
+
         color_indicator = QLabel()
-        color_indicator.setFixedSize(10, 10)
-        color_indicator.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+        ind_size = 8 if compact else 10
+        color_indicator.setFixedSize(ind_size, ind_size)
+        color_indicator.setStyleSheet(f"background-color: {color}; border-radius: {ind_size//2}px;")
 
         title_label = QLabel(title)
-        title_label.setProperty("class", "channel-title")
+        title_label.setProperty("class", "channel-title-compact" if compact else "channel-title")
 
         title_layout.addWidget(color_indicator)
         title_layout.addWidget(title_label)
@@ -37,12 +85,15 @@ class ValueCard(QWidget):
 
         # Value + Unit
         val_layout = QHBoxLayout()
+        val_layout.setContentsMargins(0, 0, 0, 0)
+        val_layout.setSpacing(4)
+
         self.val_label = QLabel("0.0000")
-        self.val_label.setProperty("class", "channel-value")
+        self.val_label.setProperty("class", "channel-value-compact" if compact else "channel-value")
         self.val_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         unit_label = QLabel(unit)
-        unit_label.setProperty("class", "channel-unit")
+        unit_label.setProperty("class", "channel-unit-compact" if compact else "channel-unit")
         unit_label.setAlignment(Qt.AlignLeft | Qt.AlignBottom)
 
         val_layout.addWidget(self.val_label)
@@ -200,17 +251,20 @@ class MainWindow(QMainWindow):
         self.ip_input = QLineEdit(self.config.get("device_ip", "192.168.1.82"))
         self.port_input = QLineEdit(str(self.config.get("device_port", 16008)))
 
-        self.mode_combo = QComboBox()
-        self.mode_combo.setView(QListView())
-        self.mode_combo.addItems(["TCP", "UDP", "Mock"])
-        self.mode_combo.setCurrentText(self.config.get("communication_mode", "TCP"))
+        # Arrange settings vertically per user request
+        conn_layout.addRow(QLabel("设备 IP"))
+        conn_layout.addRow(self.ip_input)
 
+        conn_layout.addRow(QLabel("端口"))
+        conn_layout.addRow(self.port_input)
+
+        conn_layout.addRow(QLabel("通信方式"))
+        self.mode_combo = SegmentedControl(["TCP", "UDP", "Mock"], self.config.get("communication_mode", "TCP"))
+        conn_layout.addRow(self.mode_combo)
+
+        conn_layout.addRow(QLabel("请求间隔 / ms"))
         self.interval_input = QLineEdit(str(self.config.get("request_interval_ms", 20)))
-
-        conn_layout.addRow("设备 IP:", self.ip_input)
-        conn_layout.addRow("端口:", self.port_input)
-        conn_layout.addRow("通信方式:", self.mode_combo)
-        conn_layout.addRow("请求间隔 / ms:", self.interval_input)
+        conn_layout.addRow(self.interval_input)
 
         self.btn_connect = QPushButton("建立连接")
         self.btn_connect.setObjectName("btnConnect")
@@ -226,11 +280,10 @@ class MainWindow(QMainWindow):
 
         self.record_checkbox = QCheckBox("启用本地存储")
 
-        fmt_layout = QHBoxLayout()
-        fmt_layout.addWidget(QLabel("保存格式:"))
-        self.format_combo = QComboBox()
-        self.format_combo.setView(QListView())
-        self.format_combo.addItems(["CSV", "XLSX"])
+        fmt_layout = QVBoxLayout()
+        fmt_layout.setSpacing(6)
+        fmt_layout.addWidget(QLabel("保存格式"))
+        self.format_combo = SegmentedControl(["CSV", "XLSX"], "CSV")
         fmt_layout.addWidget(self.format_combo)
 
         self.path_btn = QPushButton("选择保存路径")
@@ -303,51 +356,46 @@ class MainWindow(QMainWindow):
     def setup_value_cards(self, parent_layout):
         overview_card = QWidget()
         overview_card.setProperty("class", "Card")
+        overview_card.setMinimumHeight(135)
+        overview_card.setMaximumHeight(165)
         layout = QVBoxLayout(overview_card)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(12)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
         title = QLabel("实时数据总览")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
         layout.addWidget(title)
 
-        # Row 1: Voltages
-        v_title = QLabel("原始电压")
-        v_title.setProperty("class", "sys-stat-label")
-        layout.addWidget(v_title)
+        grid = QGridLayout()
+        grid.setSpacing(8)
 
-        v_layout = QHBoxLayout()
-        v_layout.setSpacing(12)
-        self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB")
-        self.card_ch2 = ValueCard("通道 2", "mV", "#F97316")
-        self.card_ch3 = ValueCard("通道 3", "mV", "#10B981")
-        self.card_ch4 = ValueCard("通道 4", "mV", "#8B5CF6")
-        for c in [self.card_ch1, self.card_ch2, self.card_ch3, self.card_ch4]:
-            v_layout.addWidget(c)
-        layout.addLayout(v_layout)
+        # Voltages
+        self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB", compact=True)
+        self.card_ch2 = ValueCard("通道 2", "mV", "#F97316", compact=True)
+        self.card_ch3 = ValueCard("通道 3", "mV", "#10B981", compact=True)
+        self.card_ch4 = ValueCard("通道 4", "mV", "#8B5CF6", compact=True)
 
-        layout.addSpacing(4)
+        grid.addWidget(self.card_ch1, 0, 0)
+        grid.addWidget(self.card_ch2, 0, 1)
+        grid.addWidget(self.card_ch3, 0, 2)
+        grid.addWidget(self.card_ch4, 0, 3)
 
-        # Row 2: Forces
-        f_title = QLabel("三维力解耦")
-        f_title.setProperty("class", "sys-stat-label")
-        layout.addWidget(f_title)
+        # Forces
+        self.card_fx = ValueCard("Fx", "N", "#0EA5E9", compact=True)
+        self.card_fy = ValueCard("Fy", "N", "#F59E0B", compact=True)
+        self.card_fz = ValueCard("Fz", "N", "#EF4444", compact=True)
 
-        f_layout = QHBoxLayout()
-        f_layout.setSpacing(12)
-        self.card_fx = ValueCard("Fx", "N", "#0EA5E9")
-        self.card_fy = ValueCard("Fy", "N", "#F59E0B")
-        self.card_fz = ValueCard("Fz", "N", "#EF4444")
+        grid.addWidget(self.card_fx, 1, 0)
+        grid.addWidget(self.card_fy, 1, 1)
+        grid.addWidget(self.card_fz, 1, 2)
 
-        for c in [self.card_fx, self.card_fy, self.card_fz]:
-            f_layout.addWidget(c)
+        # Blank placeholder for bottom right corner to maintain equal layout
+        spacer_card = QWidget()
+        spacer_card.setProperty("class", "valCard")
+        grid.addWidget(spacer_card, 1, 3)
 
-        spacer = QWidget()
-        f_layout.addWidget(spacer)
-
-        layout.addLayout(f_layout)
-
-        parent_layout.addWidget(overview_card)
+        layout.addLayout(grid)
+        parent_layout.addWidget(overview_card, stretch=0)
 
     def create_legend_toggle_chip(self, text, color):
         btn = QPushButton(f"● {text}")
@@ -670,6 +718,8 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(False)
             self.interval_input.setEnabled(False)
             self.mode_combo.setEnabled(False)
+            # Need to disable buttons inside the segmented control manually if disabling widget isn't styled properly
+            for btn in self.mode_combo._buttons.values(): btn.setEnabled(False)
             self.record_checkbox.setEnabled(False)
 
         else:
@@ -687,6 +737,7 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(True)
             self.interval_input.setEnabled(True)
             self.mode_combo.setEnabled(True)
+            for btn in self.mode_combo._buttons.values(): btn.setEnabled(True)
             self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
