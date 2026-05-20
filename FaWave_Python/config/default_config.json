@@ -1,0 +1,27 @@
+{
+    "device_ip": "192.168.1.82",
+    "device_port": 16008,
+    "local_ip": "192.168.1.81",
+    "local_port": 16008,
+    "communication_mode": "TCP",
+    "acquisition_mode": "real_device",
+    "request_interval_ms": 20,
+    "frame_length": 35,
+    "request_frame_hex": "5A A5 82 01 0D 00 00 00 00 00 00 FF FF",
+    "protocol": {
+        "header_hex": "5AA5",
+        "float_endian": "<",
+        "channels": 4,
+        "data_offset": 5,
+        "trailer_offset": 21
+    },
+    "ui": {
+        "refresh_rate_ms": 50,
+        "max_plot_points": 2000,
+        "theme": "dark",
+        "language": "zh_CN"
+    },
+    "force_decoder": {
+        "enabled": false
+    }
+}
