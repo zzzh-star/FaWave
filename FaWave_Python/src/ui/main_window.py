@@ -6,7 +6,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QGroupBox, QGridLayout, QFormLayout, QFileDialog, QStatusBar, QMessageBox,
                                QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame, QListView, QButtonGroup)
 from PySide6.QtCore import Qt, QTimer, QSize, Signal
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QIcon
+from PySide6.QtSvgWidgets import QSvgWidget
 import pyqtgraph as pg
 
 from ..workers.acquisition_worker import AcquisitionWorker
@@ -147,7 +148,10 @@ class MainWindow(QMainWindow):
         self.config = config
         self.logger = logger
         self.current_theme = self.config.get("ui", {}).get("theme", "light")
-        self.setWindowTitle("FaWave 四通道力传感采集系统")
+        self.setWindowTitle("FaWave 多维力感知平台")
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "app_icon.svg")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
         self.setMinimumSize(1360, 780)
         self.resize(1500, 900)
 
@@ -193,15 +197,24 @@ class MainWindow(QMainWindow):
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(20, 16, 20, 16)
 
+        logo_layout = QHBoxLayout()
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo.svg")
+        if os.path.exists(logo_path):
+            self.logo_widget = QSvgWidget(logo_path)
+            self.logo_widget.setFixedSize(40, 40)
+            logo_layout.addWidget(self.logo_widget)
+            logo_layout.addSpacing(12)
+
         title_layout = QVBoxLayout()
-        self.title_label = QLabel("FaWave 四通道力传感采集系统")
+        self.title_label = QLabel("FaWave 多维力感知采集与安全监测平台")
         self.title_label.setObjectName("headerTitle")
 
-        self.subtitle_label = QLabel("基于以太网通信的四通道力传感数据采集与可视化平台")
+        self.subtitle_label = QLabel("面向多通道力传感、三维力解耦与安全报警的实时采集系统")
         self.subtitle_label.setObjectName("headerSubtitle")
 
         title_layout.addWidget(self.title_label)
         title_layout.addWidget(self.subtitle_label)
+        logo_layout.addLayout(title_layout)
 
         # Header Right side
         header_right_layout = QHBoxLayout()
@@ -227,7 +240,7 @@ class MainWindow(QMainWindow):
         header_right_layout.addSpacing(16)
         header_right_layout.addWidget(self.status_capsule)
 
-        header_layout.addLayout(title_layout)
+        header_layout.addLayout(logo_layout)
         header_layout.addStretch()
         header_layout.addLayout(header_right_layout)
         parent_layout.addWidget(header_frame)
@@ -258,8 +271,13 @@ class MainWindow(QMainWindow):
         conn_layout.addRow(QLabel("端口"))
         conn_layout.addRow(self.port_input)
 
-        conn_layout.addRow(QLabel("通信方式"))
-        self.mode_combo = SegmentedControl(["TCP", "UDP", "Mock"], self.config.get("communication_mode", "TCP"))
+        conn_layout.addRow(QLabel("采集模式"))
+
+        default_acq_mode = "真实设备"
+        if self.config.get("acquisition_mode") == "simulation":
+            default_acq_mode = "仿真演示"
+
+        self.mode_combo = SegmentedControl(["真实设备", "仿真演示"], default_acq_mode)
         conn_layout.addRow(self.mode_combo)
 
         conn_layout.addRow(QLabel("请求间隔 / ms"))
@@ -381,6 +399,21 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.card_ch4, 0, 3)
 
         # Forces
+        # Add Decouple Status directly beneath the Row 1 layout but before Row 2 to simulate subheaders since we use a flat Grid
+        f_title = QLabel("三维力")
+        f_title.setProperty("class", "sys-stat-label")
+        f_status = QLabel("解耦未启用")
+        f_status.setStyleSheet("color: #94A3B8; font-size: 12px;")
+
+        f_header = QHBoxLayout()
+        f_header.addWidget(f_title)
+        f_header.addWidget(f_status)
+        f_header.addStretch()
+
+        f_header_widget = QWidget()
+        f_header_widget.setLayout(f_header)
+        layout.addWidget(f_header_widget)
+
         self.card_fx = ValueCard("Fx", "N", "#0EA5E9", compact=True)
         self.card_fy = ValueCard("Fy", "N", "#F59E0B", compact=True)
         self.card_fz = ValueCard("Fz", "N", "#EF4444", compact=True)
@@ -548,7 +581,7 @@ class MainWindow(QMainWindow):
         grid.setVerticalSpacing(12)
         grid.setHorizontalSpacing(16)
 
-        labels = ["连接状态", "有效帧", "错误帧", "运行时间", "保存状态"]
+        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态"]
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
@@ -576,6 +609,8 @@ class MainWindow(QMainWindow):
 
         self.sys_values["连接状态"].setText("未连接")
         self.sys_values["保存状态"].setText("未保存")
+        self.sys_values["解耦状态"].setText("未启用")
+        self.sys_values["采集模式"].setText(self.get_display_mode())
 
         parent_layout.addWidget(sys_card)
 
@@ -668,6 +703,16 @@ class MainWindow(QMainWindow):
         else:
             self.btn_autoscale.setText("自动跟随：关闭")
 
+    def get_worker_mode(self):
+        if self.mode_combo.currentText() == "真实设备":
+            return "TCP"
+        elif self.mode_combo.currentText() == "仿真演示":
+            return "Mock"
+        return "TCP"
+
+    def get_display_mode(self):
+        return self.mode_combo.currentText()
+
     def toggle_connection(self):
         if not self.worker.is_running:
             # Connect
@@ -684,7 +729,7 @@ class MainWindow(QMainWindow):
             except ValueError:
                 pass
 
-            mode = self.mode_combo.currentText()
+            worker_mode = self.get_worker_mode()
 
             if self.record_checkbox.isChecked():
                 fmt = self.format_combo.currentText()
@@ -704,8 +749,8 @@ class MainWindow(QMainWindow):
                     QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{e}")
                     return
 
-            self.logger.info(f"连接参数: IP={ip}, Port={port}, Mode={mode}")
-            self.worker.set_connection_params(mode, ip, port)
+            self.logger.info(f"连接参数: IP={ip}, Port={port}, Mode={worker_mode}")
+            self.worker.set_connection_params(worker_mode, ip, port)
             self.worker.start()
 
             self.ui_timer.start(self.refresh_rate_ms)
@@ -741,10 +786,13 @@ class MainWindow(QMainWindow):
             self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
+        is_simulation = self.get_display_mode() == "仿真演示"
+
         if status == "Connected":
-            self.status_capsule.setText("● 已连接")
+            disp_text = "● 仿真运行" if is_simulation else "● 已连接"
+            self.status_capsule.setText(disp_text)
             self.status_capsule.setObjectName("statusCapsule_Connected")
-            self.sys_values["连接状态"].setText("已连接")
+            self.sys_values["连接状态"].setText(disp_text.replace("● ", ""))
         elif status == "Disconnected":
             self.status_capsule.setText("● 未连接")
             self.status_capsule.setObjectName("statusCapsule_Disconnected")
@@ -768,6 +816,7 @@ class MainWindow(QMainWindow):
     def update_status(self):
         conn_str = self.status_capsule.text().replace("● ", "")
         save_str = "正在保存" if self.data_recorder.is_recording else "未保存"
+        acq_mode = self.get_display_mode()
 
         run_time_str = "00:00:00"
         if self.worker.is_running and self.worker.start_time > 0:
@@ -776,6 +825,7 @@ class MainWindow(QMainWindow):
             run_time_str = f"{elapsed//3600:02d}:{(elapsed%3600)//60:02d}:{elapsed%60:02d}"
 
         # Update System Status Card
+        self.sys_values["采集模式"].setText(acq_mode)
         self.sys_values["有效帧"].setText(str(self.worker.recv_frames))
         self.sys_values["错误帧"].setText(str(self.worker.error_frames))
         self.sys_values["运行时间"].setText(run_time_str)
@@ -789,6 +839,7 @@ class MainWindow(QMainWindow):
         # Update bottom status bar
         status_text = (
             f"连接状态：{conn_str} | "
+            f"采集模式：{acq_mode} | "
             f"有效帧：{self.worker.recv_frames} | "
             f"错误帧：{self.worker.error_frames} | "
             f"运行时间：{run_time_str} | "
