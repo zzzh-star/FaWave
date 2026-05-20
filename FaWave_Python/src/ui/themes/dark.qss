@@ -18,6 +18,52 @@ QScrollArea > QWidget > QWidget {
     background-color: transparent;
 }
 
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #334155;
+    border-radius: 4px;
+    min-height: 40px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #475569;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: none;
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #334155;
+    border-radius: 4px;
+    min-width: 40px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #475569;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
+}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
 /* Group Boxes / Cards */
 QGroupBox {
     background-color: #1E293B;
@@ -65,6 +111,23 @@ QLineEdit:focus, QComboBox:focus {
 QLineEdit:disabled, QComboBox:disabled {
     background-color: #1E293B;
     color: #64748B;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+QComboBox QAbstractItemView {
+    background-color: #111827;
+    color: #E5E7EB;
+    selection-background-color: #2563EB;
+    selection-color: #FFFFFF;
+    border: 1px solid #334155;
+    outline: none;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 6px 10px;
 }
 
 /* Buttons */
@@ -153,6 +216,13 @@ QLabel.channel-unit {
     font-size: 13px;
     color: #CBD5E1;
     font-weight: bold;
+}
+
+/* Header Card */
+QFrame#headerCard {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 12px;
 }
 
 /* Header Text */
@@ -259,4 +329,5 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background-color: #3B82F6;
     border-color: #3B82F6;
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'></polyline></svg>");
 }

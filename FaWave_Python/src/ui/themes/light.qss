@@ -18,6 +18,52 @@ QScrollArea > QWidget > QWidget {
     background-color: transparent;
 }
 
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #CBD5E1;
+    border-radius: 4px;
+    min-height: 40px;
+}
+QScrollBar::handle:vertical:hover {
+    background: #94A3B8;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+    background: none;
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #CBD5E1;
+    border-radius: 4px;
+    min-width: 40px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: #94A3B8;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    background: none;
+}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background: none;
+}
+
 /* Group Boxes / Cards */
 QGroupBox {
     background-color: #FFFFFF;
@@ -65,6 +111,23 @@ QLineEdit:focus, QComboBox:focus {
 QLineEdit:disabled, QComboBox:disabled {
     background-color: #E2E8F0;
     color: #94A3B8;
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 28px;
+}
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF;
+    color: #0F172A;
+    selection-background-color: #DBEAFE;
+    selection-color: #1D4ED8;
+    border: 1px solid #DDE5F0;
+    outline: none;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 28px;
+    padding: 6px 10px;
 }
 
 /* Buttons */
@@ -153,6 +216,13 @@ QLabel.channel-unit {
     font-size: 13px;
     color: #475569;
     font-weight: bold;
+}
+
+/* Header Card */
+QFrame#headerCard {
+    background-color: #FFFFFF;
+    border: 1px solid #DDE5F0;
+    border-radius: 12px;
 }
 
 /* Header Text */
@@ -259,4 +329,6 @@ QCheckBox::indicator {
 QCheckBox::indicator:checked {
     background-color: #2563EB;
     border-color: #2563EB;
+    /* Basic checkmark using standard CSS approach not fully supported by Qt, using tick symbol or letting it render standard if custom fails */
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'></polyline></svg>");
 }

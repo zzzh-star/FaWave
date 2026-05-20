@@ -136,7 +136,10 @@ class MainWindow(QMainWindow):
         self.setup_status_bar()
 
     def setup_header(self, parent_layout):
-        header_layout = QHBoxLayout()
+        header_frame = QFrame()
+        header_frame.setObjectName("headerCard")
+        header_layout = QHBoxLayout(header_frame)
+        header_layout.setContentsMargins(20, 16, 20, 16)
 
         title_layout = QVBoxLayout()
         self.title_label = QLabel("FaWave 四通道力传感采集系统")
@@ -152,7 +155,7 @@ class MainWindow(QMainWindow):
         header_right_layout = QHBoxLayout()
 
         # Theme toggle Card-like
-        theme_widget = QWidget()
+        theme_widget = QFrame()
         theme_widget.setObjectName("valCard")
         theme_layout = QHBoxLayout(theme_widget)
         theme_layout.setContentsMargins(12, 6, 12, 6)
@@ -175,7 +178,7 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
         header_layout.addLayout(header_right_layout)
-        parent_layout.addLayout(header_layout)
+        parent_layout.addWidget(header_frame)
 
     def setup_left_panel(self, parent_layout):
         left_scroll = QScrollArea()
@@ -255,31 +258,40 @@ class MainWindow(QMainWindow):
         vis_layout.setSpacing(12)
 
         vis_layout.addWidget(QLabel("<b>原始电压</b>"), 0, 0, 1, 2)
-        self.chk_ch1 = QCheckBox("通道 1"); self.chk_ch1.setChecked(True)
-        self.chk_ch1.setStyleSheet("color: #2563EB;")
-        self.chk_ch2 = QCheckBox("通道 2"); self.chk_ch2.setChecked(True)
-        self.chk_ch2.setStyleSheet("color: #F97316;")
-        self.chk_ch3 = QCheckBox("通道 3"); self.chk_ch3.setChecked(True)
-        self.chk_ch3.setStyleSheet("color: #10B981;")
-        self.chk_ch4 = QCheckBox("通道 4"); self.chk_ch4.setChecked(True)
-        self.chk_ch4.setStyleSheet("color: #8B5CF6;")
 
-        vis_layout.addWidget(self.chk_ch1, 1, 0)
-        vis_layout.addWidget(self.chk_ch2, 1, 1)
-        vis_layout.addWidget(self.chk_ch3, 2, 0)
-        vis_layout.addWidget(self.chk_ch4, 2, 1)
+        def create_custom_chk(text, color):
+            w = QWidget()
+            l = QHBoxLayout(w)
+            l.setContentsMargins(0, 0, 0, 0)
+            chk = QCheckBox(text)
+            chk.setChecked(True)
+            dot = QLabel()
+            dot.setFixedSize(10, 10)
+            dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+            l.addWidget(chk)
+            l.addWidget(dot)
+            l.addStretch()
+            return w, chk
+
+        w_ch1, self.chk_ch1 = create_custom_chk("通道 1", "#2563EB")
+        w_ch2, self.chk_ch2 = create_custom_chk("通道 2", "#F97316")
+        w_ch3, self.chk_ch3 = create_custom_chk("通道 3", "#10B981")
+        w_ch4, self.chk_ch4 = create_custom_chk("通道 4", "#8B5CF6")
+
+        vis_layout.addWidget(w_ch1, 1, 0)
+        vis_layout.addWidget(w_ch2, 1, 1)
+        vis_layout.addWidget(w_ch3, 2, 0)
+        vis_layout.addWidget(w_ch4, 2, 1)
 
         vis_layout.addWidget(QLabel("<b>三维力</b>"), 3, 0, 1, 2)
-        self.chk_fx = QCheckBox("Fx"); self.chk_fx.setChecked(True)
-        self.chk_fx.setStyleSheet("color: #0EA5E9;")
-        self.chk_fy = QCheckBox("Fy"); self.chk_fy.setChecked(True)
-        self.chk_fy.setStyleSheet("color: #F59E0B;")
-        self.chk_fz = QCheckBox("Fz"); self.chk_fz.setChecked(True)
-        self.chk_fz.setStyleSheet("color: #EF4444;")
 
-        vis_layout.addWidget(self.chk_fx, 4, 0)
-        vis_layout.addWidget(self.chk_fy, 4, 1)
-        vis_layout.addWidget(self.chk_fz, 5, 0)
+        w_fx, self.chk_fx = create_custom_chk("Fx", "#0EA5E9")
+        w_fy, self.chk_fy = create_custom_chk("Fy", "#F59E0B")
+        w_fz, self.chk_fz = create_custom_chk("Fz", "#EF4444")
+
+        vis_layout.addWidget(w_fx, 4, 0)
+        vis_layout.addWidget(w_fy, 4, 1)
+        vis_layout.addWidget(w_fz, 5, 0)
 
         for chk in [self.chk_ch1, self.chk_ch2, self.chk_ch3, self.chk_ch4, self.chk_fx, self.chk_fy, self.chk_fz]:
             chk.stateChanged.connect(self.update_plot_visibility)
@@ -291,9 +303,10 @@ class MainWindow(QMainWindow):
         ctrl_layout = QVBoxLayout(ctrl_group)
         ctrl_layout.setSpacing(12)
 
-        self.btn_autoscale = QPushButton("自动缩放")
+        self.btn_autoscale = QPushButton("恢复自动跟随")
         self.btn_autoscale.setMinimumHeight(40)
         self.btn_autoscale.clicked.connect(self.auto_scale)
+        self.auto_follow = True
 
         self.btn_clear = QPushButton("清空波形")
         self.btn_clear.setMinimumHeight(40)
@@ -369,25 +382,53 @@ class MainWindow(QMainWindow):
 
         parent_layout.addWidget(overview_card)
 
+    def create_custom_legend_item(self, text, color):
+        w = QWidget()
+        l = QHBoxLayout(w)
+        l.setContentsMargins(0, 0, 8, 0)
+        dot = QLabel()
+        dot.setFixedSize(10, 10)
+        dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
+        label = QLabel(text)
+        label.setProperty("class", "sys-stat-label")
+        l.addWidget(dot)
+        l.addWidget(label)
+        return w
+
     def setup_voltage_plot(self, parent_splitter):
         container = QWidget()
         container.setProperty("class", "Card")
         layout = QVBoxLayout(container)
 
+        # Header Row
+        header_layout = QHBoxLayout()
+        title = QLabel("原始电压曲线")
+        title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        # Custom Legend
+        header_layout.addWidget(self.create_custom_legend_item("通道 1", "#2563EB"))
+        header_layout.addWidget(self.create_custom_legend_item("通道 2", "#F97316"))
+        header_layout.addWidget(self.create_custom_legend_item("通道 3", "#10B981"))
+        header_layout.addWidget(self.create_custom_legend_item("通道 4", "#8B5CF6"))
+        layout.addLayout(header_layout)
+
         pg.setConfigOption('background', 'w') # Will be overridden in apply_theme
         pg.setConfigOption('foreground', 'k')
 
-        self.plot_voltage = pg.PlotWidget(title="原始电压曲线")
+        self.plot_voltage = pg.PlotWidget()
         self.plot_voltage.showGrid(x=True, y=True, alpha=0.3)
         self.plot_voltage.setLabel('left', '电压', units='mV')
         self.plot_voltage.setLabel('bottom', '相对时间', units='s')
-        self.plot_voltage.addLegend()
         self.plot_voltage.setYRange(-2.5, 2.5)
 
-        self.curve_ch1 = self.plot_voltage.plot(pen=pg.mkPen('#2563EB', width=2), name='通道 1')
-        self.curve_ch2 = self.plot_voltage.plot(pen=pg.mkPen('#F97316', width=2), name='通道 2')
-        self.curve_ch3 = self.plot_voltage.plot(pen=pg.mkPen('#10B981', width=2), name='通道 3')
-        self.curve_ch4 = self.plot_voltage.plot(pen=pg.mkPen('#8B5CF6', width=2), name='通道 4')
+        self.curve_ch1 = self.plot_voltage.plot(pen=pg.mkPen('#2563EB', width=2))
+        self.curve_ch2 = self.plot_voltage.plot(pen=pg.mkPen('#F97316', width=2))
+        self.curve_ch3 = self.plot_voltage.plot(pen=pg.mkPen('#10B981', width=2))
+        self.curve_ch4 = self.plot_voltage.plot(pen=pg.mkPen('#8B5CF6', width=2))
+
+        self.plot_voltage.getViewBox().sigRangeChanged.connect(self.on_plot_interacted)
 
         layout.addWidget(self.plot_voltage)
         parent_splitter.addWidget(container)
@@ -397,16 +438,30 @@ class MainWindow(QMainWindow):
         container.setProperty("class", "Card")
         layout = QVBoxLayout(container)
 
-        self.plot_force = pg.PlotWidget(title="三维力解耦曲线")
+        # Header Row
+        header_layout = QHBoxLayout()
+        title = QLabel("三维力解耦曲线")
+        title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+
+        # Custom Legend
+        header_layout.addWidget(self.create_custom_legend_item("Fx", "#0EA5E9"))
+        header_layout.addWidget(self.create_custom_legend_item("Fy", "#F59E0B"))
+        header_layout.addWidget(self.create_custom_legend_item("Fz", "#EF4444"))
+        layout.addLayout(header_layout)
+
+        self.plot_force = pg.PlotWidget()
         self.plot_force.showGrid(x=True, y=True, alpha=0.3)
         self.plot_force.setLabel('left', '力', units='N')
         self.plot_force.setLabel('bottom', '相对时间', units='s')
-        self.plot_force.addLegend()
         self.plot_force.setYRange(-5, 5)
 
-        self.curve_fx = self.plot_force.plot(pen=pg.mkPen('#0EA5E9', width=2), name='Fx')
-        self.curve_fy = self.plot_force.plot(pen=pg.mkPen('#F59E0B', width=2), name='Fy')
-        self.curve_fz = self.plot_force.plot(pen=pg.mkPen('#EF4444', width=2), name='Fz')
+        self.curve_fx = self.plot_force.plot(pen=pg.mkPen('#0EA5E9', width=2))
+        self.curve_fy = self.plot_force.plot(pen=pg.mkPen('#F59E0B', width=2))
+        self.curve_fz = self.plot_force.plot(pen=pg.mkPen('#EF4444', width=2))
+
+        self.plot_force.getViewBox().sigRangeChanged.connect(self.on_plot_interacted)
 
         layout.addWidget(self.plot_force)
         parent_splitter.addWidget(container)
@@ -573,7 +628,16 @@ class MainWindow(QMainWindow):
         self.curve_fy.setData([], [])
         self.curve_fz.setData([], [])
 
+    def on_plot_interacted(self):
+        # When user drags/zooms, disable auto_follow temporarily
+        # Since autorange happens programmatically, we check if the interaction is user-driven
+        # A simple flag suffices for now, although it will trip on our own programmatic updates too.
+        # So we only set it False if the event didn't originate from our update_ui
+        if not hasattr(self, '_updating_range') or not self._updating_range:
+            self.auto_follow = False
+
     def auto_scale(self):
+        self.auto_follow = True
         self.plot_voltage.autoRange()
         self.plot_force.autoRange()
 
@@ -703,6 +767,39 @@ class MainWindow(QMainWindow):
         )
         self.statusBar.showMessage(status_text)
 
+    def auto_range_plot(self, plot_widget, datasets, default_range, padding=0.1):
+        if not datasets:
+            return
+
+        min_y = float('inf')
+        max_y = float('-inf')
+
+        for data in datasets:
+            if not data:
+                continue
+            curr_min = min(data)
+            curr_max = max(data)
+            if curr_min < min_y:
+                min_y = curr_min
+            if curr_max > max_y:
+                max_y = curr_max
+
+        if min_y == float('inf') or max_y == float('-inf'):
+            plot_widget.setYRange(*default_range)
+            return
+
+        if max_y - min_y < 0.0001:
+            if max_y == 0:
+                plot_widget.setYRange(*default_range)
+            else:
+                margin = abs(max_y) * padding
+                plot_widget.setYRange(min_y - margin, max_y + margin)
+            return
+
+        range_span = max_y - min_y
+        margin = range_span * padding
+        plot_widget.setYRange(min_y - margin, max_y + margin)
+
     def update_ui(self):
         self.update_status()
 
@@ -719,6 +816,27 @@ class MainWindow(QMainWindow):
         self.curve_fx.setData(t_data, fx)
         self.curve_fy.setData(t_data, fy)
         self.curve_fz.setData(t_data, fz)
+
+        # Apply Auto Follow
+        if hasattr(self, 'auto_follow') and self.auto_follow:
+            self._updating_range = True
+
+            # Voltage plot
+            active_v_data = []
+            if self.chk_ch1.isChecked(): active_v_data.append(ch1)
+            if self.chk_ch2.isChecked(): active_v_data.append(ch2)
+            if self.chk_ch3.isChecked(): active_v_data.append(ch3)
+            if self.chk_ch4.isChecked(): active_v_data.append(ch4)
+            self.auto_range_plot(self.plot_voltage, active_v_data, [-2.5, 2.5])
+
+            # Force plot
+            active_f_data = []
+            if self.chk_fx.isChecked(): active_f_data.append(fx)
+            if self.chk_fy.isChecked(): active_f_data.append(fy)
+            if self.chk_fz.isChecked(): active_f_data.append(fz)
+            self.auto_range_plot(self.plot_force, active_f_data, [-5, 5])
+
+            self._updating_range = False
 
         self.card_ch1.set_value(ch1[-1])
         self.card_ch2.set_value(ch2[-1])
