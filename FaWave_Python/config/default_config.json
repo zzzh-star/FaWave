@@ -1,0 +1,19 @@
+{
+    "device_ip": "192.168.1.82",
+    "device_port": 16006,
+    "local_ip": "192.168.1.81",
+    "communication_mode": "TCP",
+    "request_interval_ms": 20,
+    "frame_length": 29,
+    "request_frame_hex": "5A A5 82 01 0D 00 00 00 00 00 00 FF FF",
+    "protocol": {
+        "header_hex": "5AA5",
+        "float_endian": "<",
+        "channels": 4,
+        "data_offset": 5
+    },
+    "ui": {
+        "refresh_rate_ms": 50,
+        "max_plot_points": 2000
+    }
+}
