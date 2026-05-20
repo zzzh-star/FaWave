@@ -1,10 +1,11 @@
 import os
 from datetime import datetime
 import time
+import time
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QLineEdit, QComboBox, QPushButton, QCheckBox,
                                QGroupBox, QGridLayout, QFormLayout, QFileDialog, QStatusBar, QMessageBox,
-                               QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame)
+                               QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame, QListView)
 from PySide6.QtCore import Qt, QTimer, QSize
 from PySide6.QtGui import QFontMetrics
 import pyqtgraph as pg
@@ -200,6 +201,7 @@ class MainWindow(QMainWindow):
         self.port_input = QLineEdit(str(self.config.get("device_port", 16008)))
 
         self.mode_combo = QComboBox()
+        self.mode_combo.setView(QListView())
         self.mode_combo.addItems(["TCP", "UDP", "Mock"])
         self.mode_combo.setCurrentText(self.config.get("communication_mode", "TCP"))
 
@@ -227,6 +229,7 @@ class MainWindow(QMainWindow):
         fmt_layout = QHBoxLayout()
         fmt_layout.addWidget(QLabel("保存格式:"))
         self.format_combo = QComboBox()
+        self.format_combo.setView(QListView())
         self.format_combo.addItems(["CSV", "XLSX"])
         fmt_layout.addWidget(self.format_combo)
 
@@ -252,61 +255,18 @@ class MainWindow(QMainWindow):
         record_layout.addWidget(self.path_label)
         left_layout.addWidget(record_group)
 
-        # 3. Curve Visibility
-        vis_group = QGroupBox("曲线显示")
-        vis_layout = QGridLayout(vis_group)
-        vis_layout.setSpacing(12)
-
-        vis_layout.addWidget(QLabel("<b>原始电压</b>"), 0, 0, 1, 2)
-
-        def create_custom_chk(text, color):
-            w = QWidget()
-            l = QHBoxLayout(w)
-            l.setContentsMargins(0, 0, 0, 0)
-            chk = QCheckBox(text)
-            chk.setChecked(True)
-            dot = QLabel()
-            dot.setFixedSize(10, 10)
-            dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
-            l.addWidget(chk)
-            l.addWidget(dot)
-            l.addStretch()
-            return w, chk
-
-        w_ch1, self.chk_ch1 = create_custom_chk("通道 1", "#2563EB")
-        w_ch2, self.chk_ch2 = create_custom_chk("通道 2", "#F97316")
-        w_ch3, self.chk_ch3 = create_custom_chk("通道 3", "#10B981")
-        w_ch4, self.chk_ch4 = create_custom_chk("通道 4", "#8B5CF6")
-
-        vis_layout.addWidget(w_ch1, 1, 0)
-        vis_layout.addWidget(w_ch2, 1, 1)
-        vis_layout.addWidget(w_ch3, 2, 0)
-        vis_layout.addWidget(w_ch4, 2, 1)
-
-        vis_layout.addWidget(QLabel("<b>三维力</b>"), 3, 0, 1, 2)
-
-        w_fx, self.chk_fx = create_custom_chk("Fx", "#0EA5E9")
-        w_fy, self.chk_fy = create_custom_chk("Fy", "#F59E0B")
-        w_fz, self.chk_fz = create_custom_chk("Fz", "#EF4444")
-
-        vis_layout.addWidget(w_fx, 4, 0)
-        vis_layout.addWidget(w_fy, 4, 1)
-        vis_layout.addWidget(w_fz, 5, 0)
-
-        for chk in [self.chk_ch1, self.chk_ch2, self.chk_ch3, self.chk_ch4, self.chk_fx, self.chk_fy, self.chk_fz]:
-            chk.stateChanged.connect(self.update_plot_visibility)
-
-        left_layout.addWidget(vis_group)
-
-        # 4. Controls
+        # 3. Controls
         ctrl_group = QGroupBox("操作控制")
         ctrl_layout = QVBoxLayout(ctrl_group)
         ctrl_layout.setSpacing(12)
 
-        self.btn_autoscale = QPushButton("恢复自动跟随")
+        self.btn_autoscale = QPushButton("自动跟随：开启")
         self.btn_autoscale.setMinimumHeight(40)
-        self.btn_autoscale.clicked.connect(self.auto_scale)
+        self.btn_autoscale.clicked.connect(self.toggle_auto_follow)
+
         self.auto_follow = True
+        self.follow_window_s = 10.0
+        self._programmatic_range_update = False
 
         self.btn_clear = QPushButton("清空波形")
         self.btn_clear.setMinimumHeight(40)
@@ -352,6 +312,10 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
 
         # Row 1: Voltages
+        v_title = QLabel("原始电压")
+        v_title.setProperty("class", "sys-stat-label")
+        layout.addWidget(v_title)
+
         v_layout = QHBoxLayout()
         v_layout.setSpacing(12)
         self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB")
@@ -362,19 +326,22 @@ class MainWindow(QMainWindow):
             v_layout.addWidget(c)
         layout.addLayout(v_layout)
 
+        layout.addSpacing(4)
+
         # Row 2: Forces
+        f_title = QLabel("三维力解耦")
+        f_title.setProperty("class", "sys-stat-label")
+        layout.addWidget(f_title)
+
         f_layout = QHBoxLayout()
         f_layout.setSpacing(12)
         self.card_fx = ValueCard("Fx", "N", "#0EA5E9")
         self.card_fy = ValueCard("Fy", "N", "#F59E0B")
         self.card_fz = ValueCard("Fz", "N", "#EF4444")
 
-        # Add a dummy stretcher so the 3 cards don't stretch fully to the end if we want equal sizing
-        # But for equal width, we just add them
         for c in [self.card_fx, self.card_fy, self.card_fz]:
             f_layout.addWidget(c)
 
-        # To align them uniformly with the 4 cards above, we can add a spacer taking the space of the 4th card
         spacer = QWidget()
         f_layout.addWidget(spacer)
 
@@ -382,18 +349,18 @@ class MainWindow(QMainWindow):
 
         parent_layout.addWidget(overview_card)
 
-    def create_custom_legend_item(self, text, color):
-        w = QWidget()
-        l = QHBoxLayout(w)
-        l.setContentsMargins(0, 0, 8, 0)
-        dot = QLabel()
-        dot.setFixedSize(10, 10)
-        dot.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
-        label = QLabel(text)
-        label.setProperty("class", "sys-stat-label")
-        l.addWidget(dot)
-        l.addWidget(label)
-        return w
+    def create_legend_toggle_chip(self, text, color):
+        btn = QPushButton(f"● {text}")
+        btn.setProperty("class", "legend-chip")
+        btn.setCheckable(True)
+        btn.setChecked(True)
+        # We handle dynamic color switching in style logic or directly
+        btn.setStyleSheet(f"""
+            QPushButton:checked {{
+                color: {color};
+            }}
+        """)
+        return btn
 
     def setup_voltage_plot(self, parent_splitter):
         container = QWidget()
@@ -407,11 +374,16 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title)
         header_layout.addStretch()
 
-        # Custom Legend
-        header_layout.addWidget(self.create_custom_legend_item("通道 1", "#2563EB"))
-        header_layout.addWidget(self.create_custom_legend_item("通道 2", "#F97316"))
-        header_layout.addWidget(self.create_custom_legend_item("通道 3", "#10B981"))
-        header_layout.addWidget(self.create_custom_legend_item("通道 4", "#8B5CF6"))
+        # Custom Legend Toggle Chips
+        self.chk_ch1 = self.create_legend_toggle_chip("通道 1", "#2563EB")
+        self.chk_ch2 = self.create_legend_toggle_chip("通道 2", "#F97316")
+        self.chk_ch3 = self.create_legend_toggle_chip("通道 3", "#10B981")
+        self.chk_ch4 = self.create_legend_toggle_chip("通道 4", "#8B5CF6")
+
+        for chk in [self.chk_ch1, self.chk_ch2, self.chk_ch3, self.chk_ch4]:
+            chk.toggled.connect(self.update_plot_visibility)
+            header_layout.addWidget(chk)
+
         layout.addLayout(header_layout)
 
         pg.setConfigOption('background', 'w') # Will be overridden in apply_theme
@@ -445,10 +417,15 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(title)
         header_layout.addStretch()
 
-        # Custom Legend
-        header_layout.addWidget(self.create_custom_legend_item("Fx", "#0EA5E9"))
-        header_layout.addWidget(self.create_custom_legend_item("Fy", "#F59E0B"))
-        header_layout.addWidget(self.create_custom_legend_item("Fz", "#EF4444"))
+        # Custom Legend Toggle Chips
+        self.chk_fx = self.create_legend_toggle_chip("Fx", "#0EA5E9")
+        self.chk_fy = self.create_legend_toggle_chip("Fy", "#F59E0B")
+        self.chk_fz = self.create_legend_toggle_chip("Fz", "#EF4444")
+
+        for chk in [self.chk_fx, self.chk_fy, self.chk_fz]:
+            chk.toggled.connect(self.update_plot_visibility)
+            header_layout.addWidget(chk)
+
         layout.addLayout(header_layout)
 
         self.plot_force = pg.PlotWidget()
@@ -483,7 +460,7 @@ class MainWindow(QMainWindow):
         alarm_card = QWidget()
         alarm_card.setProperty("class", "Card")
         layout = QVBoxLayout(alarm_card)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
 
         title = QLabel("安全报警")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
@@ -497,11 +474,14 @@ class MainWindow(QMainWindow):
 
         # Recent Alarms
         layout.addSpacing(8)
-        layout.addWidget(QLabel("<b>最近报警</b>"))
+        recent_title = QLabel("最近报警")
+        recent_title.setStyleSheet("font-weight: bold;")
+        layout.addWidget(recent_title)
 
         self.recent_alarm_label = QLabel("暂无报警信息")
         self.recent_alarm_label.setProperty("class", "sys-stat-label")
         self.recent_alarm_label.setWordWrap(True)
+        self.recent_alarm_label.setStyleSheet("background-color: transparent; border: 1px solid #DDE5F0; border-radius: 4px; padding: 6px;")
         layout.addWidget(self.recent_alarm_label)
 
         parent_layout.addWidget(alarm_card)
@@ -524,20 +504,20 @@ class MainWindow(QMainWindow):
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
-            l = QLabel(f"{lbl}:")
+            l = QLabel(f"{lbl}")
             l.setProperty("class", "sys-stat-label")
             grid.addWidget(l, i, 0)
 
             v = QLabel("--")
             v.setProperty("class", "sys-stat-value")
-            grid.addWidget(v, i, 1)
+            grid.addWidget(v, i, 1, alignment=Qt.AlignRight)
             self.sys_values[lbl] = v
 
         # Add Recent Error specifically
         layout.addLayout(grid)
         layout.addSpacing(8)
 
-        err_title = QLabel("最近错误:")
+        err_title = QLabel("最近错误")
         err_title.setProperty("class", "sys-stat-label")
         layout.addWidget(err_title)
 
@@ -629,17 +609,16 @@ class MainWindow(QMainWindow):
         self.curve_fz.setData([], [])
 
     def on_plot_interacted(self):
-        # When user drags/zooms, disable auto_follow temporarily
-        # Since autorange happens programmatically, we check if the interaction is user-driven
-        # A simple flag suffices for now, although it will trip on our own programmatic updates too.
-        # So we only set it False if the event didn't originate from our update_ui
-        if not hasattr(self, '_updating_range') or not self._updating_range:
+        if not self._programmatic_range_update and self.auto_follow:
             self.auto_follow = False
+            self.btn_autoscale.setText("自动跟随：关闭")
 
-    def auto_scale(self):
-        self.auto_follow = True
-        self.plot_voltage.autoRange()
-        self.plot_force.autoRange()
+    def toggle_auto_follow(self):
+        self.auto_follow = not self.auto_follow
+        if self.auto_follow:
+            self.btn_autoscale.setText("自动跟随：开启")
+        else:
+            self.btn_autoscale.setText("自动跟随：关闭")
 
     def toggle_connection(self):
         if not self.worker.is_running:
@@ -819,24 +798,38 @@ class MainWindow(QMainWindow):
 
         # Apply Auto Follow
         if hasattr(self, 'auto_follow') and self.auto_follow:
-            self._updating_range = True
+            self._programmatic_range_update = True
+
+            t_end = t_data[-1]
+            t_start = max(t_data[0], t_end - self.follow_window_s)
+
+            self.plot_voltage.setXRange(t_start, t_end, padding=0)
+            self.plot_force.setXRange(t_start, t_end, padding=0)
+
+            # We filter data points to only those within [t_start, t_end]
+            # To optimize, we can just use the whole array if it's within deque size
+            # Since max_points=2000 at 20ms is 40s, we should slice it.
+            try:
+                start_idx = next(i for i, t in enumerate(t_data) if t >= t_start)
+            except StopIteration:
+                start_idx = 0
 
             # Voltage plot
             active_v_data = []
-            if self.chk_ch1.isChecked(): active_v_data.append(ch1)
-            if self.chk_ch2.isChecked(): active_v_data.append(ch2)
-            if self.chk_ch3.isChecked(): active_v_data.append(ch3)
-            if self.chk_ch4.isChecked(): active_v_data.append(ch4)
+            if getattr(self, 'chk_ch1', None) and self.chk_ch1.isChecked(): active_v_data.append(ch1[start_idx:])
+            if getattr(self, 'chk_ch2', None) and self.chk_ch2.isChecked(): active_v_data.append(ch2[start_idx:])
+            if getattr(self, 'chk_ch3', None) and self.chk_ch3.isChecked(): active_v_data.append(ch3[start_idx:])
+            if getattr(self, 'chk_ch4', None) and self.chk_ch4.isChecked(): active_v_data.append(ch4[start_idx:])
             self.auto_range_plot(self.plot_voltage, active_v_data, [-2.5, 2.5])
 
             # Force plot
             active_f_data = []
-            if self.chk_fx.isChecked(): active_f_data.append(fx)
-            if self.chk_fy.isChecked(): active_f_data.append(fy)
-            if self.chk_fz.isChecked(): active_f_data.append(fz)
+            if getattr(self, 'chk_fx', None) and self.chk_fx.isChecked(): active_f_data.append(fx[start_idx:])
+            if getattr(self, 'chk_fy', None) and self.chk_fy.isChecked(): active_f_data.append(fy[start_idx:])
+            if getattr(self, 'chk_fz', None) and self.chk_fz.isChecked(): active_f_data.append(fz[start_idx:])
             self.auto_range_plot(self.plot_force, active_f_data, [-5, 5])
 
-            self._updating_range = False
+            self._programmatic_range_update = False
 
         self.card_ch1.set_value(ch1[-1])
         self.card_ch2.set_value(ch2[-1])

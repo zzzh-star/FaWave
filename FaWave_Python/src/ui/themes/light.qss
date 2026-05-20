@@ -124,10 +124,15 @@ QComboBox QAbstractItemView {
     selection-color: #1D4ED8;
     border: 1px solid #DDE5F0;
     outline: none;
+    border-radius: 4px;
 }
 QComboBox QAbstractItemView::item {
     min-height: 28px;
     padding: 6px 10px;
+}
+QComboBox QListView {
+    background-color: #FFFFFF;
+    border: 1px solid #DDE5F0;
 }
 
 /* Buttons */
@@ -139,6 +144,25 @@ QPushButton {
     color: #0F172A;
     font-weight: 600;
     min-height: 20px;
+}
+
+QPushButton.legend-chip {
+    background-color: transparent;
+    border: 1px solid transparent;
+    padding: 4px 10px;
+    border-radius: 12px;
+    color: #475569;
+    font-weight: 600;
+}
+
+QPushButton.legend-chip:hover {
+    background-color: #F1F5F9;
+}
+
+QPushButton.legend-chip:checked {
+    background-color: #F8FAFC;
+    border: 1px solid #DDE5F0;
+    color: #0F172A;
 }
 
 QPushButton:hover {
