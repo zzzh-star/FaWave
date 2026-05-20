@@ -1,0 +1,214 @@
+/* Light Theme - Commercial Instrument Grade */
+QMainWindow {
+    background-color: #F5F7FA;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+}
+
+QWidget {
+    font-size: 14px;
+    color: #0F172A;
+}
+
+/* Group Boxes / Cards */
+QGroupBox {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    margin-top: 24px;
+    font-weight: 600;
+    color: #0F172A;
+    padding-top: 16px;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    padding: 0 10px;
+    background-color: transparent;
+    font-size: 15px;
+}
+
+/* Inputs and Comboboxes */
+QLineEdit, QComboBox {
+    background-color: #F8FAFC;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #0F172A;
+    min-height: 20px;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #2563EB;
+    outline: none;
+    background-color: #FFFFFF;
+}
+
+QLineEdit:disabled, QComboBox:disabled {
+    background-color: #E2E8F0;
+    color: #94A3B8;
+}
+
+/* Buttons */
+QPushButton {
+    background-color: #F1F5F9;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 10px 16px;
+    color: #0F172A;
+    font-weight: 600;
+    min-height: 20px;
+}
+
+QPushButton:hover {
+    background-color: #E2E8F0;
+}
+
+QPushButton:pressed {
+    background-color: #CBD5E1;
+}
+
+QPushButton:disabled {
+    background-color: #F1F5F9;
+    color: #94A3B8;
+}
+
+/* Primary Action Button (Connect) */
+QPushButton#btnConnect {
+    background-color: #2563EB;
+    border: none;
+    color: #FFFFFF;
+}
+
+QPushButton#btnConnect:hover {
+    background-color: #1D4ED8;
+}
+
+QPushButton#btnConnect:pressed {
+    background-color: #1E40AF;
+}
+
+/* Danger Action Button (Disconnect) */
+QPushButton#btnDisconnect {
+    background-color: #DC2626;
+    border: none;
+    color: #FFFFFF;
+}
+
+QPushButton#btnDisconnect:hover {
+    background-color: #B91C1C;
+}
+
+QPushButton#btnDisconnect:pressed {
+    background-color: #991B1B;
+}
+
+/* Status Bar */
+QStatusBar {
+    background-color: #FFFFFF;
+    border-top: 1px solid #E2E8F0;
+    color: #64748B;
+    font-size: 13px;
+}
+
+/* Channel Value Cards */
+QWidget#valCard {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+}
+
+QLabel.channel-title {
+    font-size: 14px;
+    color: #64748B;
+    font-weight: 600;
+}
+
+QLabel.channel-value {
+    font-family: "Segoe UI", "Roboto Mono", Consolas, monospace;
+    font-size: 28px;
+    font-weight: bold;
+    color: #0F172A;
+}
+
+QLabel.channel-unit {
+    font-size: 14px;
+    color: #64748B;
+    font-weight: bold;
+}
+
+/* Theme Toggle Button */
+QPushButton#btnThemeToggle {
+    background-color: transparent;
+    border: 1px solid #E2E8F0;
+    color: #64748B;
+}
+
+QPushButton#btnThemeToggle:hover {
+    background-color: #F1F5F9;
+}
+
+/* Tab Widget */
+QTabWidget::pane {
+    border: 1px solid #E2E8F0;
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 8px;
+}
+
+QTabBar::tab {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-bottom-color: #E2E8F0;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    min-width: 120px;
+    padding: 10px 16px;
+    margin-right: 4px;
+    color: #64748B;
+    font-weight: 600;
+}
+
+QTabBar::tab:selected, QTabBar::tab:hover {
+    background: #FFFFFF;
+    color: #2563EB;
+    border-bottom-color: #FFFFFF;
+}
+
+/* Alarm Cards */
+QWidget#alarmCard {
+    background-color: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+}
+
+QLabel.alarm-title {
+    font-size: 15px;
+    font-weight: bold;
+    color: #0F172A;
+}
+
+QLabel.alarm-desc {
+    font-size: 13px;
+    color: #64748B;
+}
+
+QLabel.alarm-status-normal {
+    font-weight: bold;
+    color: #16A34A;
+}
+
+QLabel.alarm-status-warning {
+    font-weight: bold;
+    color: #F59E0B;
+}
+
+QLabel.alarm-status-danger {
+    font-weight: bold;
+    color: #DC2626;
+}
+
+QLabel.alarm-status-unconfigured {
+    font-weight: bold;
+    color: #94A3B8;
+}

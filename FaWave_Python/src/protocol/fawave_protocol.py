@@ -7,7 +7,7 @@ class ProtocolError(Exception):
 
 class FaWaveProtocol:
     def __init__(self, config):
-        self.frame_length = config.get("frame_length", 29)
+        self.frame_length = config.get("frame_length", 35)
         self.request_hex = config.get("request_frame_hex", "5A A5 82 01 0D 00 00 00 00 00 00 FF FF")
 
         protocol_config = config.get("protocol", {})
@@ -16,6 +16,7 @@ class FaWaveProtocol:
         self.float_endian = protocol_config.get("float_endian", "<")
         self.channels = protocol_config.get("channels", 4)
         self.data_offset = protocol_config.get("data_offset", 5)
+        self.trailer_offset = protocol_config.get("trailer_offset", 21)
 
     def build_request_frame(self) -> bytes:
         """
@@ -67,4 +68,9 @@ class FaWaveProtocol:
 
         # Keep raw hex for debugging
         data["raw_hex"] = frame.hex().upper()
+        if len(frame) >= self.trailer_offset:
+            data["trailer_hex"] = frame[self.trailer_offset:].hex().upper()
+        else:
+            data["trailer_hex"] = ""
+
         return data

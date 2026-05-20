@@ -13,18 +13,29 @@ class AcquisitionWorker(QThread):
     connection_status_changed = Signal(str) # "Connected", "Disconnected", "Error"
     stats_updated = Signal(int, int) # recv_frames, error_frames
 
-    def __init__(self, config, data_buffer, data_recorder):
+    def __init__(self, config, data_buffer, data_recorder, logger):
         super().__init__()
         self.config = config
         self.data_buffer = data_buffer
         self.data_recorder = data_recorder
+        self.logger = logger
         self.protocol = FaWaveProtocol(self.config)
 
         self.client = None
         self.is_running = False
 
         self.request_interval = self.config.get("request_interval_ms", 20) / 1000.0
-        self.frame_length = self.config.get("frame_length", 29)
+        self.frame_length = self.config.get("frame_length", 35)
+
+        # Load force decoder and alarm manager if available (stubs for now)
+        try:
+            from ..force.force_decoder import ForceDecoder
+            from ..force.alarm_manager import AlarmManager
+            self.force_decoder = ForceDecoder(self.config)
+            self.alarm_manager = AlarmManager(self.config)
+        except ImportError:
+            self.force_decoder = None
+            self.alarm_manager = None
 
         self.recv_frames = 0
         self.error_frames = 0
@@ -53,10 +64,12 @@ class AcquisitionWorker(QThread):
 
         try:
             self.client.connect()
+            self.logger.info("连接成功")
             self.connection_status_changed.emit("Connected")
             self.start_time = time.time()
         except Exception as e:
-            self.error_occurred.emit(f"Connection failed: {str(e)}")
+            self.logger.error(f"连接失败: {str(e)}", exc_info=True)
+            self.error_occurred.emit(f"最近错误：TCP 连接失败 ({str(e)})")
             self.connection_status_changed.emit("Error")
             self.is_running = False
             return
@@ -71,10 +84,29 @@ class AcquisitionWorker(QThread):
                 self.client.send(request_frame)
 
                 # 2. Receive response
+                # TCP Client now uses receive_frame_sync under the hood for `receive`
                 response_frame = self.client.receive(self.frame_length)
 
                 # 3. Parse response
                 data_dict = self.protocol.parse_response_frame(response_frame)
+
+                # Decode forces if decoder is available
+                if self.force_decoder:
+                    force_res = self.force_decoder.decode(
+                        data_dict.get("ch1", 0.0),
+                        data_dict.get("ch2", 0.0),
+                        data_dict.get("ch3", 0.0),
+                        data_dict.get("ch4", 0.0)
+                    )
+                    data_dict.update(force_res)
+
+                    if self.alarm_manager:
+                        alarms = self.alarm_manager.evaluate(
+                            force_res.get("fx", 0.0),
+                            force_res.get("fy", 0.0),
+                            force_res.get("fz", 0.0)
+                        )
+                        data_dict["alarms"] = alarms
 
                 # Reset error counter on success
                 self.consecutive_errors = 0
@@ -91,12 +123,15 @@ class AcquisitionWorker(QThread):
                     data_dict.get("ch1", 0.0),
                     data_dict.get("ch2", 0.0),
                     data_dict.get("ch3", 0.0),
-                    data_dict.get("ch4", 0.0)
+                    data_dict.get("ch4", 0.0),
+                    data_dict.get("fx", 0.0),
+                    data_dict.get("fy", 0.0),
+                    data_dict.get("fz", 0.0)
                 )
 
                 # 5. Record if enabled
                 self.data_recorder.record_point(
-                    abs_time, rel_time, self.sample_index, data_dict, data_dict.get("raw_hex", ""), "OK"
+                    abs_time, rel_time, self.sample_index, data_dict, data_dict.get("raw_hex", ""), "OK", data_dict.get("trailer_hex", "")
                 )
 
                 # Emit data for the UI (UI can choose to use this directly or read from buffer via QTimer)
@@ -106,7 +141,16 @@ class AcquisitionWorker(QThread):
             except ProtocolError as e:
                 self.error_frames += 1
                 self.consecutive_errors += 1
-                self.error_occurred.emit(f"Protocol Error: {str(e)}")
+
+                err_msg = str(e)
+                if "length" in err_msg.lower():
+                    self.error_occurred.emit(f"最近错误：帧长度错误，期望 {self.frame_length} 字节")
+                elif "header" in err_msg.lower():
+                    self.error_occurred.emit("最近错误：帧头错误，期望 5A A5")
+                elif "float" in err_msg.lower():
+                    self.error_occurred.emit("最近错误：数据解析错误")
+                else:
+                    self.error_occurred.emit(f"最近错误：{err_msg}")
 
                 # Still record the error frame if recording
                 if hasattr(self, 'data_recorder') and self.data_recorder.is_recording:
@@ -115,12 +159,28 @@ class AcquisitionWorker(QThread):
                     self.data_recorder.record_point(abs_time, rel_time, self.sample_index, {}, "", "ProtocolError")
 
                 if self.consecutive_errors >= self.max_consecutive_errors:
-                    self.error_occurred.emit("Too many consecutive protocol errors! Disconnecting.")
+                    self.logger.error("断开原因: 连续协议错误过多")
+                    self.error_occurred.emit("最近错误：连续错误过多，断开连接")
                     self.connection_status_changed.emit("Error")
                     break
 
+            except ConnectionError as e:
+                err_msg = str(e).lower()
+                if "timeout" in err_msg:
+                    self.logger.error("协议错误: 接收超时", exc_info=True)
+                    self.error_occurred.emit("最近错误：接收超时")
+                elif "broken" in err_msg or "closed" in err_msg:
+                    self.logger.error("断开原因: 远程主机关闭连接", exc_info=True)
+                    self.error_occurred.emit("最近错误：远程主机关闭连接")
+                else:
+                    self.logger.error(f"断开原因: TCP 连接失败 ({str(e)})", exc_info=True)
+                    self.error_occurred.emit(f"最近错误：TCP 连接失败 ({str(e)})")
+
+                self.connection_status_changed.emit("Error")
+                break
             except Exception as e:
-                self.error_occurred.emit(f"Communication Error: {str(e)}")
+                self.logger.error(f"异常堆栈: {str(e)}", exc_info=True)
+                self.error_occurred.emit(f"最近错误：{str(e)}")
                 self.connection_status_changed.emit("Error")
                 break
 

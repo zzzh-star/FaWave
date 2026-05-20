@@ -27,19 +27,43 @@ class TCPClient(BaseClient):
         self.socket.sendall(data)
 
     def receive(self, length: int) -> bytes:
+        return self.receive_frame_sync(length, b'\x5A\xA5')
+
+    def receive_frame_sync(self, frame_length: int, header: bytes) -> bytes:
         if not self._connected or not self.socket:
             raise ConnectionError("TCP Client is not connected.")
 
-        # Read exactly `length` bytes if possible
-        chunks = []
-        bytes_recd = 0
-        while bytes_recd < length:
-            chunk = self.socket.recv(length - bytes_recd)
-            if chunk == b'':
-                raise ConnectionError("Socket connection broken")
-            chunks.append(chunk)
-            bytes_recd += len(chunk)
-        return b''.join(chunks)
+        if not hasattr(self, '_buffer'):
+            self._buffer = bytearray()
+
+        header_len = len(header)
+
+        while True:
+            # Check if we have enough data to search for header
+            if len(self._buffer) >= header_len:
+                idx = self._buffer.find(header)
+                if idx != -1:
+                    # Discard garbage before the header
+                    if idx > 0:
+                        del self._buffer[:idx]
+
+                    # Check if we have a full frame
+                    if len(self._buffer) >= frame_length:
+                        frame = bytes(self._buffer[:frame_length])
+                        del self._buffer[:frame_length]
+                        return frame
+                else:
+                    # Header not found, keep the last len(header)-1 bytes in case the header is split
+                    del self._buffer[:-header_len + 1]
+
+            # Receive more data
+            try:
+                chunk = self.socket.recv(4096)
+                if chunk == b'':
+                    raise ConnectionError("Socket connection broken")
+                self._buffer.extend(chunk)
+            except socket.timeout:
+                raise ConnectionError("Socket receive timeout")
 
     def is_connected(self) -> bool:
         return self._connected

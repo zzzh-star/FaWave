@@ -29,14 +29,14 @@ def load_config():
 
 def run_app():
     logger = setup_logger()
-    logger.info("Starting FaWave Python Application")
+    logger.info("程序启动 - FaWave 四通道力传感采集系统")
 
     config = load_config()
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion") # Base style to build upon
 
-    window = MainWindow(config)
+    window = MainWindow(config, logger)
     window.show()
 
     sys.exit(app.exec())

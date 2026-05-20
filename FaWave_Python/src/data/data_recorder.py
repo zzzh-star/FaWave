@@ -24,7 +24,13 @@ class DataRecorder:
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(self.file_path)), exist_ok=True)
 
-        headers = ["AbsoluteTime", "RelativeTime_s", "SampleIndex", "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV", "RawHex", "Status"]
+        headers = [
+            "AbsoluteTime", "RelativeTime_s", "SampleIndex",
+            "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
+            "Fx_N", "Fy_N", "Fz_N",
+            "Alarm1", "Alarm2", "Alarm3",
+            "RawHex", "TrailerHex", "Status"
+        ]
 
         if self.file_format == "CSV":
             self._csv_file = open(self.file_path, mode='w', newline='', encoding='utf-8')
@@ -46,9 +52,16 @@ class DataRecorder:
         elif self.file_format == "XLSX" and len(self._buffer) > 0:
             self._flush_xlsx_buffer()
 
-    def record_point(self, abs_time, rel_time, sample_idx, data_dict, raw_hex="", status="OK"):
+    def record_point(self, abs_time, rel_time, sample_idx, data_dict, raw_hex="", status="OK", trailer_hex=""):
         if not self.is_recording:
             return
+
+        alarms = data_dict.get("alarms", [
+            {"level": "未配置"}, {"level": "未配置"}, {"level": "未配置"}
+        ])
+        alarm1 = alarms[0]["level"] if len(alarms) > 0 else "未配置"
+        alarm2 = alarms[1]["level"] if len(alarms) > 1 else "未配置"
+        alarm3 = alarms[2]["level"] if len(alarms) > 2 else "未配置"
 
         row = [
             abs_time,
@@ -58,7 +71,14 @@ class DataRecorder:
             data_dict.get("ch2", 0.0),
             data_dict.get("ch3", 0.0),
             data_dict.get("ch4", 0.0),
+            data_dict.get("fx", 0.0),
+            data_dict.get("fy", 0.0),
+            data_dict.get("fz", 0.0),
+            alarm1,
+            alarm2,
+            alarm3,
             raw_hex,
+            trailer_hex,
             status
         ]
 
@@ -74,7 +94,13 @@ class DataRecorder:
         if not self._buffer:
             return
 
-        headers = ["AbsoluteTime", "RelativeTime_s", "SampleIndex", "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV", "RawHex", "Status"]
+        headers = [
+            "AbsoluteTime", "RelativeTime_s", "SampleIndex",
+            "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
+            "Fx_N", "Fy_N", "Fz_N",
+            "Alarm1", "Alarm2", "Alarm3",
+            "RawHex", "TrailerHex", "Status"
+        ]
         new_df = pd.DataFrame(self._buffer, columns=headers)
 
         try:

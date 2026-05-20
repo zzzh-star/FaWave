@@ -1,41 +1,64 @@
-# FaWave Python
+# FaWave 四通道力传感采集系统
 
-FaWave Force Acquisition System is a Python-based software for recording and visualizing 4-channel Ethernet-based force sensing data.
+FaWave 是一款基于 Python 的商业级数据采集与可视化平台，专门用于以太网四通道力传感设备的数据接收、解析、实时绘图和本地保存。
 
-## Features
-- Real-time plotting of 4-channel force data
-- Support for TCP, UDP, and Mock communication modes
-- Local data saving to CSV or XLSX format
-- Configurable settings via JSON
-- Modern, clean user interface
+## 核心功能
+- **全中文化专业 UI**：提供浅色/深色双主题，适应科研演示与长时间监控场景。
+- **高性能实时波形**：基于 pyqtgraph 渲染的实时电压及三维力解耦曲线。
+- **模块化通信引擎**：支持 TCP / UDP 以及 Mock 离线数据模拟，采集与 UI 渲染线程完全解耦，确保高频采集不丢帧。
+- **完整协议解析**：自定义配置字节序和协议结构，支持实时提取 35 字节完整原始帧。
+- **可扩展架构**：预留 `Fx/Fy/Fz` 三维力解耦算法接口以及三个自定义报警接口。
+- **数据本地持久化**：支持以 CSV/XLSX 格式导出，包含时间戳和原始十六进制帧，且采用缓冲和文件追加技术，解决大文件写入性能问题。
 
-## Setup
-1. Clone the repository.
-2. Install dependencies:
-   ```
+## 运行环境
+推荐使用 Python 3.10 或更高版本。
+
+## 安装依赖
+1. 克隆代码仓库。
+2. 在项目根目录下执行：
+   ```bash
    pip install -r requirements.txt
    ```
 
-## Running the Application
-Run the main script:
-```
+## 启动软件
+执行入口脚本打开上位机：
+```bash
 python main.py
 ```
 
-## Configuration
-All communication, protocol, and UI parameters are defined in `config/default_config.json`. You can edit this file to configure default IPs, port numbers, communication modes, UI refresh rates, data offsets, and frame lengths.
+## 通信参数
+当前验证通过的真实硬件通信参数默认配置如下：
 
-## Build Executable
-To package the application into a standalone executable (.exe), run:
-```
+- **设备 IP**：192.168.1.82
+- **电脑 IP**：192.168.1.81
+- **端口**：16008
+- **通信方式**：TCP
+- **采集方式**：每次请求返回一帧 (Per Request)
+- **请求间隔**：20 ms
+- **返回帧长度**：35 字节
+- **请求帧 (HEX)**：`5A A5 82 01 0D 00 00 00 00 00 00 FF FF`
+- **解析方式**：`frame[5:21]`，小端 float32 (`<ffff`)
+
+## 浅色 / 深色主题切换
+UI 支持两种主题。可以在软件右上角随时点击“切换深色主题/切换浅色主题”按钮，无须重启软件。相关的 QSS 样式表存放于 `src/ui/themes/` 目录下。
+
+## 数据保存与日志
+勾选“启用本地存储”后，每次建立连接都将把采集到的完整数据保存至选择的路径。
+- **默认路径**：程序目录/Data/FaWave_Data_YYYYMMDD_HHMMSS.csv
+- **格式**：支持 CSV (推荐用于长时间记录) 和 XLSX。
+- **日志**：软件运行日志（包含通信建立和协议解析错误详情）默认保存在根目录下的 `logs/FaWave_YYYYMMDD.log`，方便事后排查异常。
+
+## 打包为独立执行程序 (EXE)
+我们提供了批处理脚本 `build_exe.bat`，可用于将 Python 环境打包成一个绿色版的可执行文件：
+```bash
 build_exe.bat
 ```
-The resulting executable will be generated in the `dist` folder.
+打包成功后，可在生成的 `dist/` 文件夹下找到最终的 `.exe` 程序。
 
-## Modifying Protocol Parsing
-If you need to adjust protocol structures (like endianness or offsets):
-1. Adjust `float_endian` or `data_offset` in `config/default_config.json`.
-2. For major logic modifications, edit `src/protocol/fawave_protocol.py`.
-
-## Modifying UI Style
-The visual style is stored in `src/ui/style.qss`. You can edit this file using QSS syntax (similar to CSS) to change colors, fonts, or element sizes.
+## 常见问题排查
+1. **连接失败/接收超时**
+   - 请检查网线是否正确连接，并确保本机 IP 为 192.168.1.81，设备 IP 为 192.168.1.82，且端口为 16008。
+2. **显示“帧长度错误，期望 35 字节”**
+   - 当前网络环境或硬件设置的帧格式可能发生了改变。请前往 `config/default_config.json` 根据实际情况修改 `frame_length` 字段。
+3. **缺少依赖错误**
+   - 确保运行了 `pip install -r requirements.txt`。若使用的是打包好的 exe 且出现异常，请检查并保证根目录下的 `config/` 和 `src/ui/themes/` 文件在打包指令中被正确引用。

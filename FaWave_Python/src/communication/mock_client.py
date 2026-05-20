@@ -8,12 +8,13 @@ class MockClient(BaseClient):
         self.config = config
         self._connected = False
         self.start_time = 0
-        self.frame_length = config.get("frame_length", 29)
+        self.frame_length = config.get("frame_length", 35)
 
         protocol_config = config.get("protocol", {})
         self.header_hex = protocol_config.get("header_hex", "5AA5")
         self.float_endian = protocol_config.get("float_endian", "<")
         self.data_offset = protocol_config.get("data_offset", 5)
+        self.trailer_offset = protocol_config.get("trailer_offset", 21)
 
         self.header_bytes = bytes.fromhex(self.header_hex)
 
@@ -48,10 +49,15 @@ class MockClient(BaseClient):
         # 1. Start with zeroes
         frame = bytearray(self.frame_length)
 
-        # 2. Write header
+        # 2. Write header and metadata (e.g., 81 02 1D)
         for i, b in enumerate(self.header_bytes):
             if i < len(frame):
                 frame[i] = b
+
+        if len(frame) >= 5:
+            frame[2] = 0x81
+            frame[3] = 0x02
+            frame[4] = 0x1D
 
         # 3. Write float values
         offset = self.data_offset
@@ -63,8 +69,11 @@ class MockClient(BaseClient):
                     frame[offset + i] = b
             offset += 4
 
-        # Optional: Add an artificial small delay to simulate network?
-        # Not needed since the worker controls the request interval.
+        # 4. Write mock trailer
+        trailer_mock = b'\xAA' * (self.frame_length - self.trailer_offset)
+        for i, b in enumerate(trailer_mock):
+            if self.trailer_offset + i < len(frame):
+                frame[self.trailer_offset + i] = b
 
         return bytes(frame)
 
