@@ -1,4 +1,4 @@
-/* Dark Theme - Commercial Instrument Grade */
+/* Dark Theme - Commercial Instrument Dashboard */
 QMainWindow {
     background-color: #0F172A;
     font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
@@ -9,15 +9,25 @@ QWidget {
     color: #E5E7EB;
 }
 
+/* Scroll Area */
+QScrollArea {
+    border: none;
+    background-color: transparent;
+}
+QScrollArea > QWidget > QWidget {
+    background-color: transparent;
+}
+
 /* Group Boxes / Cards */
 QGroupBox {
     background-color: #1E293B;
     border: 1px solid #334155;
     border-radius: 12px;
     margin-top: 24px;
-    font-weight: 600;
+    font-weight: bold;
     color: #E5E7EB;
     padding-top: 16px;
+    padding-bottom: 8px;
 }
 
 QGroupBox::title {
@@ -26,6 +36,14 @@ QGroupBox::title {
     padding: 0 10px;
     background-color: transparent;
     font-size: 15px;
+    color: #E5E7EB;
+}
+
+/* Base Cards */
+.Card {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 12px;
 }
 
 /* Inputs and Comboboxes */
@@ -113,71 +131,73 @@ QStatusBar {
 
 /* Channel Value Cards */
 QWidget#valCard {
-    background-color: #1E293B;
+    background-color: #111827;
     border: 1px solid #334155;
-    border-radius: 12px;
+    border-radius: 8px;
 }
 
 QLabel.channel-title {
     font-size: 14px;
-    color: #94A3B8;
+    color: #CBD5E1;
     font-weight: 600;
 }
 
 QLabel.channel-value {
     font-family: "Segoe UI", "Roboto Mono", Consolas, monospace;
-    font-size: 28px;
+    font-size: 24px;
     font-weight: bold;
     color: #F8FAFC;
 }
 
 QLabel.channel-unit {
-    font-size: 14px;
-    color: #94A3B8;
+    font-size: 13px;
+    color: #CBD5E1;
     font-weight: bold;
 }
 
-/* Theme Toggle Button */
-QPushButton#btnThemeToggle {
-    background-color: transparent;
-    border: 1px solid #334155;
+/* Header Text */
+QLabel#headerTitle {
+    font-size: 26px;
+    font-weight: bold;
+    color: #F8FAFC;
+}
+
+QLabel#headerSubtitle {
+    font-size: 14px;
     color: #94A3B8;
 }
 
-QPushButton#btnThemeToggle:hover {
-    background-color: #334155;
+/* Status Capsule */
+QLabel#statusCapsule_Connected {
+    background-color: #064E3B;
+    color: #34D399;
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-weight: bold;
+    border: 1px solid #059669;
 }
 
-/* Tab Widget */
-QTabWidget::pane {
-    border: 1px solid #334155;
-    background: #1E293B;
-    border-radius: 12px;
-    padding: 8px;
-}
-
-QTabBar::tab {
-    background: #0F172A;
-    border: 1px solid #334155;
-    border-bottom-color: #334155;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    min-width: 120px;
-    padding: 10px 16px;
-    margin-right: 4px;
+QLabel#statusCapsule_Disconnected {
+    background-color: #1E293B;
     color: #94A3B8;
-    font-weight: 600;
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-weight: bold;
+    border: 1px solid #334155;
 }
 
-QTabBar::tab:selected, QTabBar::tab:hover {
-    background: #1E293B;
-    color: #60A5FA;
-    border-bottom-color: #1E293B;
+QLabel#statusCapsule_Error {
+    background-color: #7F1D1D;
+    color: #FCA5A5;
+    border-radius: 16px;
+    padding: 6px 16px;
+    font-weight: bold;
+    border: 1px solid #B91C1C;
 }
 
 /* Alarm Cards */
 QWidget#alarmCard {
-    background-color: #1E293B;
+    background-color: #111827;
     border: 1px solid #334155;
     border-radius: 8px;
 }
@@ -211,4 +231,32 @@ QLabel.alarm-status-danger {
 QLabel.alarm-status-unconfigured {
     font-weight: bold;
     color: #64748B;
+}
+
+/* System Status Grid */
+QLabel.sys-stat-label {
+    color: #94A3B8;
+    font-size: 13px;
+}
+QLabel.sys-stat-value {
+    color: #E5E7EB;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+/* Checkboxes */
+QCheckBox {
+    spacing: 8px;
+    font-weight: bold;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1px solid #475569;
+    background-color: #0F172A;
+}
+QCheckBox::indicator:checked {
+    background-color: #3B82F6;
+    border-color: #3B82F6;
 }

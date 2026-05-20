@@ -1,10 +1,12 @@
 import os
 from datetime import datetime
+import time
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QLineEdit, QComboBox, QPushButton, QCheckBox,
-                               QGroupBox, QGridLayout, QFileDialog, QStatusBar, QMessageBox,
-                               QSpacerItem, QSizePolicy, QTabWidget, QFrame)
-from PySide6.QtCore import Qt, QTimer
+                               QGroupBox, QGridLayout, QFormLayout, QFileDialog, QStatusBar, QMessageBox,
+                               QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame)
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import QFontMetrics
 import pyqtgraph as pg
 
 from ..workers.acquisition_worker import AcquisitionWorker
@@ -16,12 +18,13 @@ class ValueCard(QWidget):
         super().__init__()
         self.setObjectName("valCard")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
 
         # Color indicator + Title
         title_layout = QHBoxLayout()
         color_indicator = QLabel()
-        color_indicator.setFixedSize(12, 12)
-        color_indicator.setStyleSheet(f"background-color: {color}; border-radius: 6px;")
+        color_indicator.setFixedSize(10, 10)
+        color_indicator.setStyleSheet(f"background-color: {color}; border-radius: 5px;")
 
         title_label = QLabel(title)
         title_label.setProperty("class", "channel-title")
@@ -54,15 +57,17 @@ class AlarmCard(QWidget):
         super().__init__()
         self.setObjectName("alarmCard")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
 
         self.title_label = QLabel(title)
         self.title_label.setProperty("class", "alarm-title")
 
-        self.status_label = QLabel("状态：正常")
-        self.status_label.setProperty("class", "alarm-status-normal")
+        self.status_label = QLabel("状态：未配置")
+        self.status_label.setProperty("class", "alarm-status-unconfigured")
 
         self.desc_label = QLabel("说明：等待规则配置")
         self.desc_label.setProperty("class", "alarm-desc")
+        self.desc_label.setWordWrap(True)
 
         layout.addWidget(self.title_label)
         layout.addWidget(self.status_label)
@@ -72,7 +77,6 @@ class AlarmCard(QWidget):
         self.status_label.setText(f"状态：{status}")
         self.desc_label.setText(f"说明：{desc}")
 
-        # Dynamic styling
         if status == "正常":
             self.status_label.setProperty("class", "alarm-status-normal")
         elif status == "预警":
@@ -85,7 +89,6 @@ class AlarmCard(QWidget):
         self.style().unpolish(self.status_label)
         self.style().polish(self.status_label)
 
-
 class MainWindow(QMainWindow):
     def __init__(self, config, logger):
         super().__init__()
@@ -93,23 +96,18 @@ class MainWindow(QMainWindow):
         self.logger = logger
         self.current_theme = self.config.get("ui", {}).get("theme", "light")
         self.setWindowTitle("FaWave 四通道力传感采集系统")
-        self.setMinimumSize(1280, 760)
-        self.resize(1440, 860)
+        self.setMinimumSize(1360, 780)
+        self.resize(1500, 900)
 
-        self.start_time = None
         self.last_error = "无"
 
-        # Initialize data components
         self.data_buffer = DataBuffer(max_points=config.get("ui", {}).get("max_plot_points", 2000))
         self.data_recorder = DataRecorder()
         self.worker = AcquisitionWorker(config, self.data_buffer, self.data_recorder, self.logger)
 
-        # Connect worker signals
         self.worker.connection_status_changed.connect(self.on_connection_status_changed)
         self.worker.error_occurred.connect(self.on_error_occurred)
-        self.worker.stats_updated.connect(self.on_stats_updated)
 
-        # Setup UI Refresh Timer
         self.ui_timer = QTimer(self)
         self.refresh_rate_ms = config.get("ui", {}).get("refresh_rate_ms", 50)
         self.ui_timer.timeout.connect(self.update_ui)
@@ -121,217 +119,265 @@ class MainWindow(QMainWindow):
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
-        main_layout.setContentsMargins(16, 16, 16, 16)
+        main_layout.setContentsMargins(16, 16, 16, 8)
+        main_layout.setSpacing(16)
 
-        # 1. Header Area
+        self.setup_header(main_layout)
+
+        # Main Content Area - HBox
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(16)
+        main_layout.addLayout(content_layout, stretch=1)
+
+        self.setup_left_panel(content_layout)
+        self.setup_center_panel(content_layout)
+        self.setup_right_panel(content_layout)
+
+        self.setup_status_bar()
+
+    def setup_header(self, parent_layout):
         header_layout = QHBoxLayout()
+
         title_layout = QVBoxLayout()
-        title_label = QLabel("FaWave 四通道力传感采集系统")
-        title_label.setStyleSheet("font-size: 26px; font-weight: bold; color: #0F172A;")
-        subtitle_label = QLabel("基于以太网通信的四通道力传感数据采集与可视化平台")
-        subtitle_label.setStyleSheet("font-size: 14px; color: #64748B;")
-        title_layout.addWidget(title_label)
-        title_layout.addWidget(subtitle_label)
+        self.title_label = QLabel("FaWave 四通道力传感采集系统")
+        self.title_label.setObjectName("headerTitle")
+
+        self.subtitle_label = QLabel("基于以太网通信的四通道力传感数据采集与可视化平台")
+        self.subtitle_label.setObjectName("headerSubtitle")
+
+        title_layout.addWidget(self.title_label)
+        title_layout.addWidget(self.subtitle_label)
 
         # Header Right side
         header_right_layout = QHBoxLayout()
 
-        # Theme toggle
-        self.btn_theme = QPushButton("切换深色主题")
-        self.btn_theme.setObjectName("btnThemeToggle")
+        # Theme toggle Card-like
+        theme_widget = QWidget()
+        theme_widget.setObjectName("valCard")
+        theme_layout = QHBoxLayout(theme_widget)
+        theme_layout.setContentsMargins(12, 6, 12, 6)
+        theme_label = QLabel("界面主题")
+        theme_label.setProperty("class", "sys-stat-label")
+        self.btn_theme = QPushButton("切换深色主题" if self.current_theme == 'light' else "切换浅色主题")
+        self.btn_theme.setCursor(Qt.PointingHandCursor)
         self.btn_theme.clicked.connect(self.toggle_theme)
+        theme_layout.addWidget(theme_label)
+        theme_layout.addWidget(self.btn_theme)
 
-        # Status capsule
         self.status_capsule = QLabel("● 未连接")
-        self.status_capsule.setStyleSheet("""
-            background-color: #F1F5F9; color: #64748B;
-            border-radius: 16px; padding: 6px 16px; font-weight: bold;
-        """)
+        self.status_capsule.setObjectName("statusCapsule_Disconnected")
+        self.status_capsule.setAlignment(Qt.AlignCenter)
 
-        header_right_layout.addWidget(self.btn_theme)
+        header_right_layout.addWidget(theme_widget)
         header_right_layout.addSpacing(16)
         header_right_layout.addWidget(self.status_capsule)
 
         header_layout.addLayout(title_layout)
         header_layout.addStretch()
         header_layout.addLayout(header_right_layout)
-        main_layout.addLayout(header_layout)
-        main_layout.addSpacing(16)
+        parent_layout.addLayout(header_layout)
 
-        # Main Content Layout (Left Panel + Right Tab Area)
-        content_layout = QHBoxLayout()
-        main_layout.addLayout(content_layout, stretch=1)
+    def setup_left_panel(self, parent_layout):
+        left_scroll = QScrollArea()
+        left_scroll.setFixedWidth(360)
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # 2. Left Control Panel
         left_panel = QWidget()
-        left_panel.setFixedWidth(320)
         left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(left_panel)
+        left_layout.setContentsMargins(0, 0, 10, 0)
+        left_layout.setSpacing(16)
 
-        # Connection Settings Group
+        # 1. Communication
         conn_group = QGroupBox("通信设置")
-        conn_layout = QGridLayout(conn_group)
+        conn_layout = QFormLayout(conn_group)
+        conn_layout.setSpacing(12)
 
-        conn_layout.addWidget(QLabel("设备 IP:"), 0, 0)
         self.ip_input = QLineEdit(self.config.get("device_ip", "192.168.1.82"))
-        conn_layout.addWidget(self.ip_input, 0, 1)
-
-        conn_layout.addWidget(QLabel("端口:"), 1, 0)
         self.port_input = QLineEdit(str(self.config.get("device_port", 16008)))
-        conn_layout.addWidget(self.port_input, 1, 1)
 
-        conn_layout.addWidget(QLabel("通信方式:"), 2, 0)
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["TCP", "UDP", "Mock"])
         self.mode_combo.setCurrentText(self.config.get("communication_mode", "TCP"))
-        conn_layout.addWidget(self.mode_combo, 2, 1)
 
-        conn_layout.addWidget(QLabel("请求间隔 / ms:"), 3, 0)
         self.interval_input = QLineEdit(str(self.config.get("request_interval_ms", 20)))
-        conn_layout.addWidget(self.interval_input, 3, 1)
 
-        left_layout.addWidget(conn_group)
-
-        # Data Recording Group
-        record_group = QGroupBox("数据记录")
-        record_layout = QGridLayout(record_group)
-
-        self.record_checkbox = QCheckBox("启用本地存储")
-        record_layout.addWidget(self.record_checkbox, 0, 0, 1, 2)
-
-        record_layout.addWidget(QLabel("保存格式:"), 1, 0)
-        self.format_combo = QComboBox()
-        self.format_combo.addItems(["CSV", "XLSX"])
-        record_layout.addWidget(self.format_combo, 1, 1)
-
-        self.path_btn = QPushButton("选择保存路径")
-        self.path_btn.clicked.connect(self.select_save_path)
-        record_layout.addWidget(self.path_btn, 2, 0, 1, 2)
-
-        # Default save path
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.save_path = os.path.join(os.getcwd(), "Data", f"FaWave_Data_{timestamp}.csv")
-        self.path_label = QLabel(self.save_path)
-        self.path_label.setWordWrap(True)
-        self.path_label.setStyleSheet("font-size: 12px; color: #64748B;")
-        record_layout.addWidget(self.path_label, 3, 0, 1, 2)
-
-        left_layout.addWidget(record_group)
-
-        # Controls Group
-        control_group = QGroupBox("操作控制")
-        control_layout = QVBoxLayout(control_group)
+        conn_layout.addRow("设备 IP:", self.ip_input)
+        conn_layout.addRow("端口:", self.port_input)
+        conn_layout.addRow("通信方式:", self.mode_combo)
+        conn_layout.addRow("请求间隔 / ms:", self.interval_input)
 
         self.btn_connect = QPushButton("建立连接")
         self.btn_connect.setObjectName("btnConnect")
+        self.btn_connect.setMinimumHeight(42)
         self.btn_connect.clicked.connect(self.toggle_connection)
+        conn_layout.addRow(self.btn_connect)
+        left_layout.addWidget(conn_group)
 
-        self.btn_clear = QPushButton("清空波形")
-        self.btn_clear.clicked.connect(self.clear_plot)
+        # 2. Data Recording
+        record_group = QGroupBox("数据记录")
+        record_layout = QVBoxLayout(record_group)
+        record_layout.setSpacing(12)
 
-        self.btn_autoscale = QPushButton("自动缩放")
-        self.btn_autoscale.clicked.connect(self.auto_scale)
+        self.record_checkbox = QCheckBox("启用本地存储")
 
-        control_layout.addWidget(self.btn_connect)
-        control_layout.addWidget(self.btn_clear)
-        control_layout.addWidget(self.btn_autoscale)
+        fmt_layout = QHBoxLayout()
+        fmt_layout.addWidget(QLabel("保存格式:"))
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["CSV", "XLSX"])
+        fmt_layout.addWidget(self.format_combo)
 
-        left_layout.addWidget(control_group)
+        self.path_btn = QPushButton("选择保存路径")
+        self.path_btn.setMinimumHeight(40)
+        self.path_btn.clicked.connect(self.select_save_path)
 
-        # Channel Visibility
-        vis_group = QGroupBox("通道显示")
-        vis_layout = QVBoxLayout(vis_group)
-        self.chk_ch1 = QCheckBox("■ 通道 1")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.save_path = os.path.join(os.getcwd(), "Data", f"FaWave_Data_{timestamp}.csv")
+        self.path_label = QLabel(self.save_path)
+        self.path_label.setProperty("class", "sys-stat-label")
+        self.path_label.setToolTip(self.save_path)
+
+        # Elide text if too long
+        metrics = QFontMetrics(self.path_label.font())
+        elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
+        self.path_label.setText(elided)
+
+        record_layout.addWidget(self.record_checkbox)
+        record_layout.addLayout(fmt_layout)
+        record_layout.addWidget(self.path_btn)
+        record_layout.addWidget(QLabel("当前路径:"))
+        record_layout.addWidget(self.path_label)
+        left_layout.addWidget(record_group)
+
+        # 3. Curve Visibility
+        vis_group = QGroupBox("曲线显示")
+        vis_layout = QGridLayout(vis_group)
+        vis_layout.setSpacing(12)
+
+        vis_layout.addWidget(QLabel("<b>原始电压</b>"), 0, 0, 1, 2)
+        self.chk_ch1 = QCheckBox("通道 1"); self.chk_ch1.setChecked(True)
         self.chk_ch1.setStyleSheet("color: #2563EB;")
-        self.chk_ch1.setChecked(True)
-        self.chk_ch2 = QCheckBox("■ 通道 2")
+        self.chk_ch2 = QCheckBox("通道 2"); self.chk_ch2.setChecked(True)
         self.chk_ch2.setStyleSheet("color: #F97316;")
-        self.chk_ch2.setChecked(True)
-        self.chk_ch3 = QCheckBox("■ 通道 3")
+        self.chk_ch3 = QCheckBox("通道 3"); self.chk_ch3.setChecked(True)
         self.chk_ch3.setStyleSheet("color: #10B981;")
-        self.chk_ch3.setChecked(True)
-        self.chk_ch4 = QCheckBox("■ 通道 4")
+        self.chk_ch4 = QCheckBox("通道 4"); self.chk_ch4.setChecked(True)
         self.chk_ch4.setStyleSheet("color: #8B5CF6;")
-        self.chk_ch4.setChecked(True)
 
-        self.chk_ch1.stateChanged.connect(self.update_plot_visibility)
-        self.chk_ch2.stateChanged.connect(self.update_plot_visibility)
-        self.chk_ch3.stateChanged.connect(self.update_plot_visibility)
-        self.chk_ch4.stateChanged.connect(self.update_plot_visibility)
+        vis_layout.addWidget(self.chk_ch1, 1, 0)
+        vis_layout.addWidget(self.chk_ch2, 1, 1)
+        vis_layout.addWidget(self.chk_ch3, 2, 0)
+        vis_layout.addWidget(self.chk_ch4, 2, 1)
 
-        vis_layout.addWidget(self.chk_ch1)
-        vis_layout.addWidget(self.chk_ch2)
-        vis_layout.addWidget(self.chk_ch3)
-        vis_layout.addWidget(self.chk_ch4)
+        vis_layout.addWidget(QLabel("<b>三维力</b>"), 3, 0, 1, 2)
+        self.chk_fx = QCheckBox("Fx"); self.chk_fx.setChecked(True)
+        self.chk_fx.setStyleSheet("color: #0EA5E9;")
+        self.chk_fy = QCheckBox("Fy"); self.chk_fy.setChecked(True)
+        self.chk_fy.setStyleSheet("color: #F59E0B;")
+        self.chk_fz = QCheckBox("Fz"); self.chk_fz.setChecked(True)
+        self.chk_fz.setStyleSheet("color: #EF4444;")
+
+        vis_layout.addWidget(self.chk_fx, 4, 0)
+        vis_layout.addWidget(self.chk_fy, 4, 1)
+        vis_layout.addWidget(self.chk_fz, 5, 0)
+
+        for chk in [self.chk_ch1, self.chk_ch2, self.chk_ch3, self.chk_ch4, self.chk_fx, self.chk_fy, self.chk_fz]:
+            chk.stateChanged.connect(self.update_plot_visibility)
 
         left_layout.addWidget(vis_group)
+
+        # 4. Controls
+        ctrl_group = QGroupBox("操作控制")
+        ctrl_layout = QVBoxLayout(ctrl_group)
+        ctrl_layout.setSpacing(12)
+
+        self.btn_autoscale = QPushButton("自动缩放")
+        self.btn_autoscale.setMinimumHeight(40)
+        self.btn_autoscale.clicked.connect(self.auto_scale)
+
+        self.btn_clear = QPushButton("清空波形")
+        self.btn_clear.setMinimumHeight(40)
+        self.btn_clear.clicked.connect(self.clear_plot)
+
+        ctrl_layout.addWidget(self.btn_autoscale)
+        ctrl_layout.addWidget(self.btn_clear)
+        left_layout.addWidget(ctrl_group)
+
         left_layout.addStretch()
+        left_scroll.setWidget(left_panel)
+        parent_layout.addWidget(left_scroll)
 
-        # 3. Right Area (Tabbed)
-        self.tab_widget = QTabWidget()
-        content_layout.addWidget(self.tab_widget, stretch=1)
+    def setup_center_panel(self, parent_layout):
+        center_panel = QWidget()
+        center_layout = QVBoxLayout(center_panel)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.setSpacing(16)
 
-        # Overview Tab
-        overview_tab = QWidget()
-        self.setup_overview_tab(overview_tab)
-        self.tab_widget.addTab(overview_tab, "系统总览")
+        self.setup_value_cards(center_layout)
 
-        # Raw Voltage Tab
-        raw_voltage_tab = QWidget()
-        self.setup_raw_voltage_tab(raw_voltage_tab)
-        self.tab_widget.addTab(raw_voltage_tab, "原始电压")
+        # Splitter for the two plots
+        plot_splitter = QSplitter(Qt.Vertical)
 
-        # 3D Force Tab
-        force_tab = QWidget()
-        self.setup_force_tab(force_tab)
-        self.tab_widget.addTab(force_tab, "三维力解耦")
+        self.setup_voltage_plot(plot_splitter)
+        self.setup_force_plot(plot_splitter)
 
-        # Alarms Tab
-        alarms_tab = QWidget()
-        self.setup_alarms_tab(alarms_tab)
-        self.tab_widget.addTab(alarms_tab, "安全报警")
+        # Set initial sizes (e.g. 55% / 45%)
+        plot_splitter.setSizes([550, 450])
 
-        # 4. Status Bar
-        self.statusBar = QStatusBar()
-        self.setStatusBar(self.statusBar)
-        self.update_status_bar()
+        center_layout.addWidget(plot_splitter, stretch=1)
+        parent_layout.addWidget(center_panel, stretch=1)
 
-    def setup_overview_tab(self, parent):
-        layout = QVBoxLayout(parent)
+    def setup_value_cards(self, parent_layout):
+        overview_card = QWidget()
+        overview_card.setProperty("class", "Card")
+        layout = QVBoxLayout(overview_card)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        # Top half: Value cards
-        cards_layout = QGridLayout()
+        title = QLabel("实时数据总览")
+        title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        layout.addWidget(title)
 
+        # Row 1: Voltages
+        v_layout = QHBoxLayout()
+        v_layout.setSpacing(12)
         self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB")
         self.card_ch2 = ValueCard("通道 2", "mV", "#F97316")
         self.card_ch3 = ValueCard("通道 3", "mV", "#10B981")
         self.card_ch4 = ValueCard("通道 4", "mV", "#8B5CF6")
+        for c in [self.card_ch1, self.card_ch2, self.card_ch3, self.card_ch4]:
+            v_layout.addWidget(c)
+        layout.addLayout(v_layout)
 
+        # Row 2: Forces
+        f_layout = QHBoxLayout()
+        f_layout.setSpacing(12)
         self.card_fx = ValueCard("Fx", "N", "#0EA5E9")
         self.card_fy = ValueCard("Fy", "N", "#F59E0B")
         self.card_fz = ValueCard("Fz", "N", "#EF4444")
 
-        cards_layout.addWidget(self.card_ch1, 0, 0)
-        cards_layout.addWidget(self.card_ch2, 0, 1)
-        cards_layout.addWidget(self.card_ch3, 0, 2)
-        cards_layout.addWidget(self.card_ch4, 0, 3)
+        # Add a dummy stretcher so the 3 cards don't stretch fully to the end if we want equal sizing
+        # But for equal width, we just add them
+        for c in [self.card_fx, self.card_fy, self.card_fz]:
+            f_layout.addWidget(c)
 
-        cards_layout.addWidget(self.card_fx, 1, 0)
-        cards_layout.addWidget(self.card_fy, 1, 1)
-        cards_layout.addWidget(self.card_fz, 1, 2)
+        # To align them uniformly with the 4 cards above, we can add a spacer taking the space of the 4th card
+        spacer = QWidget()
+        f_layout.addWidget(spacer)
 
-        layout.addLayout(cards_layout)
-        layout.addStretch()
+        layout.addLayout(f_layout)
 
-    def setup_raw_voltage_tab(self, parent):
-        layout = QVBoxLayout(parent)
+        parent_layout.addWidget(overview_card)
 
-        # Plot Area
-        pg.setConfigOption('background', 'w' if self.current_theme == 'light' else '#0B1120')
-        pg.setConfigOption('foreground', 'k' if self.current_theme == 'light' else '#E5E7EB')
+    def setup_voltage_plot(self, parent_splitter):
+        container = QWidget()
+        container.setProperty("class", "Card")
+        layout = QVBoxLayout(container)
 
-        self.plot_voltage = pg.PlotWidget(title="四通道实时电压波形")
+        pg.setConfigOption('background', 'w') # Will be overridden in apply_theme
+        pg.setConfigOption('foreground', 'k')
+
+        self.plot_voltage = pg.PlotWidget(title="原始电压曲线")
         self.plot_voltage.showGrid(x=True, y=True, alpha=0.3)
         self.plot_voltage.setLabel('left', '电压', units='mV')
         self.plot_voltage.setLabel('bottom', '相对时间', units='s')
@@ -344,53 +390,116 @@ class MainWindow(QMainWindow):
         self.curve_ch4 = self.plot_voltage.plot(pen=pg.mkPen('#8B5CF6', width=2), name='通道 4')
 
         layout.addWidget(self.plot_voltage)
+        parent_splitter.addWidget(container)
 
-    def setup_force_tab(self, parent):
-        layout = QVBoxLayout(parent)
+    def setup_force_plot(self, parent_splitter):
+        container = QWidget()
+        container.setProperty("class", "Card")
+        layout = QVBoxLayout(container)
 
-        # Plot Area
         self.plot_force = pg.PlotWidget(title="三维力解耦曲线")
         self.plot_force.showGrid(x=True, y=True, alpha=0.3)
         self.plot_force.setLabel('left', '力', units='N')
         self.plot_force.setLabel('bottom', '相对时间', units='s')
         self.plot_force.addLegend()
-        self.plot_force.setYRange(-10, 10)
+        self.plot_force.setYRange(-5, 5)
 
         self.curve_fx = self.plot_force.plot(pen=pg.mkPen('#0EA5E9', width=2), name='Fx')
         self.curve_fy = self.plot_force.plot(pen=pg.mkPen('#F59E0B', width=2), name='Fy')
         self.curve_fz = self.plot_force.plot(pen=pg.mkPen('#EF4444', width=2), name='Fz')
 
-        # Visibility toggles for force
-        toggle_layout = QHBoxLayout()
-        self.chk_fx = QCheckBox("显示 Fx"); self.chk_fx.setChecked(True)
-        self.chk_fy = QCheckBox("显示 Fy"); self.chk_fy.setChecked(True)
-        self.chk_fz = QCheckBox("显示 Fz"); self.chk_fz.setChecked(True)
-
-        self.chk_fx.stateChanged.connect(lambda: self.curve_fx.setVisible(self.chk_fx.isChecked()))
-        self.chk_fy.stateChanged.connect(lambda: self.curve_fy.setVisible(self.chk_fy.isChecked()))
-        self.chk_fz.stateChanged.connect(lambda: self.curve_fz.setVisible(self.chk_fz.isChecked()))
-
-        toggle_layout.addWidget(self.chk_fx)
-        toggle_layout.addWidget(self.chk_fy)
-        toggle_layout.addWidget(self.chk_fz)
-        toggle_layout.addStretch()
-
         layout.addWidget(self.plot_force)
-        layout.addLayout(toggle_layout)
+        parent_splitter.addWidget(container)
 
-    def setup_alarms_tab(self, parent):
-        layout = QVBoxLayout(parent)
+    def setup_right_panel(self, parent_layout):
+        right_panel = QWidget()
+        right_panel.setFixedWidth(300)
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(16)
 
-        alarms_grid = QGridLayout()
+        self.setup_alarm_panel(right_layout)
+        self.setup_system_status_panel(right_layout)
+
+        right_layout.addStretch()
+        parent_layout.addWidget(right_panel)
+
+    def setup_alarm_panel(self, parent_layout):
+        alarm_card = QWidget()
+        alarm_card.setProperty("class", "Card")
+        layout = QVBoxLayout(alarm_card)
+        layout.setSpacing(12)
+
+        title = QLabel("安全报警")
+        title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        layout.addWidget(title)
+
         self.alarm_cards = []
-
         for i in range(3):
             card = AlarmCard(f"● 报警 {i+1}")
             self.alarm_cards.append(card)
-            alarms_grid.addWidget(card, 0, i)
+            layout.addWidget(card)
 
-        layout.addLayout(alarms_grid)
-        layout.addStretch()
+        # Recent Alarms
+        layout.addSpacing(8)
+        layout.addWidget(QLabel("<b>最近报警</b>"))
+
+        self.recent_alarm_label = QLabel("暂无报警信息")
+        self.recent_alarm_label.setProperty("class", "sys-stat-label")
+        self.recent_alarm_label.setWordWrap(True)
+        layout.addWidget(self.recent_alarm_label)
+
+        parent_layout.addWidget(alarm_card)
+
+    def setup_system_status_panel(self, parent_layout):
+        sys_card = QWidget()
+        sys_card.setProperty("class", "Card")
+        layout = QVBoxLayout(sys_card)
+        layout.setSpacing(12)
+
+        title = QLabel("系统状态")
+        title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        layout.addWidget(title)
+
+        grid = QGridLayout()
+        grid.setVerticalSpacing(12)
+        grid.setHorizontalSpacing(16)
+
+        labels = ["连接状态", "有效帧", "错误帧", "运行时间", "保存状态"]
+        self.sys_values = {}
+
+        for i, lbl in enumerate(labels):
+            l = QLabel(f"{lbl}:")
+            l.setProperty("class", "sys-stat-label")
+            grid.addWidget(l, i, 0)
+
+            v = QLabel("--")
+            v.setProperty("class", "sys-stat-value")
+            grid.addWidget(v, i, 1)
+            self.sys_values[lbl] = v
+
+        # Add Recent Error specifically
+        layout.addLayout(grid)
+        layout.addSpacing(8)
+
+        err_title = QLabel("最近错误:")
+        err_title.setProperty("class", "sys-stat-label")
+        layout.addWidget(err_title)
+
+        self.sys_values["最近错误"] = QLabel("无")
+        self.sys_values["最近错误"].setProperty("class", "sys-stat-value")
+        self.sys_values["最近错误"].setWordWrap(True)
+        layout.addWidget(self.sys_values["最近错误"])
+
+        self.sys_values["连接状态"].setText("未连接")
+        self.sys_values["保存状态"].setText("未保存")
+
+        parent_layout.addWidget(sys_card)
+
+    def setup_status_bar(self):
+        self.statusBar = QStatusBar()
+        self.setStatusBar(self.statusBar)
+        self.update_status()
 
     def apply_theme(self):
         try:
@@ -400,20 +509,17 @@ class MainWindow(QMainWindow):
                 self.setStyleSheet(f.read())
 
             # Update pg plots background
-            bg_color = 'w' if self.current_theme == 'light' else '#0B1120'
-            fg_color = 'k' if self.current_theme == 'light' else '#E5E7EB'
-            pg.setConfigOption('background', bg_color)
-            pg.setConfigOption('foreground', fg_color)
+            bg_color = '#FFFFFF' if self.current_theme == 'light' else '#0B1120'
+            fg_color = '#0F172A' if self.current_theme == 'light' else '#E5E7EB'
+            grid_alpha = 50 if self.current_theme == 'light' else 80
 
-            # Note: Changing pg global options only affects new plots,
-            # so we explicitly update existing widgets
-            self.plot_voltage.setBackground(bg_color)
-            self.plot_voltage.getAxis('left').setPen(fg_color)
-            self.plot_voltage.getAxis('bottom').setPen(fg_color)
-
-            self.plot_force.setBackground(bg_color)
-            self.plot_force.getAxis('left').setPen(fg_color)
-            self.plot_force.getAxis('bottom').setPen(fg_color)
+            for plot in [self.plot_voltage, self.plot_force]:
+                plot.setBackground(bg_color)
+                plot.getAxis('left').setPen(fg_color)
+                plot.getAxis('bottom').setPen(fg_color)
+                plot.getAxis('left').setTextPen(fg_color)
+                plot.getAxis('bottom').setTextPen(fg_color)
+                plot.showGrid(x=True, y=True, alpha=grid_alpha/255.0)
 
         except Exception as e:
             print(f"Failed to load stylesheet: {e}")
@@ -422,9 +528,6 @@ class MainWindow(QMainWindow):
         if self.current_theme == 'light':
             self.current_theme = 'dark'
             self.btn_theme.setText("切换浅色主题")
-
-            # Update main title specific coloring if needed
-            self.findChild(QLabel, "").setStyleSheet("font-size: 26px; font-weight: bold; color: #E5E7EB;") if self.findChild(QLabel, "") else None
         else:
             self.current_theme = 'light'
             self.btn_theme.setText("切换深色主题")
@@ -444,20 +547,20 @@ class MainWindow(QMainWindow):
         )
         if file_path:
             self.save_path = file_path
+            self.path_label.setToolTip(self.save_path)
 
-            # Truncate path for display
-            display_path = file_path
-            if len(display_path) > 40:
-                parts = display_path.split(os.sep)
-                if len(parts) > 3:
-                    display_path = f"{parts[0]}{os.sep}...{os.sep}{parts[-2]}{os.sep}{parts[-1]}"
-            self.path_label.setText(display_path)
+            metrics = QFontMetrics(self.path_label.font())
+            elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
+            self.path_label.setText(elided)
 
     def update_plot_visibility(self):
         self.curve_ch1.setVisible(self.chk_ch1.isChecked())
         self.curve_ch2.setVisible(self.chk_ch2.isChecked())
         self.curve_ch3.setVisible(self.chk_ch3.isChecked())
         self.curve_ch4.setVisible(self.chk_ch4.isChecked())
+        self.curve_fx.setVisible(self.chk_fx.isChecked())
+        self.curve_fy.setVisible(self.chk_fy.isChecked())
+        self.curve_fz.setVisible(self.chk_fz.isChecked())
 
     def clear_plot(self):
         self.data_buffer.clear()
@@ -492,12 +595,15 @@ class MainWindow(QMainWindow):
 
             mode = self.mode_combo.currentText()
 
-            # Setup recording
             if self.record_checkbox.isChecked():
                 fmt = self.format_combo.currentText()
                 if not self.save_path.lower().endswith(f".{fmt.lower()}"):
                     self.save_path = f"{os.path.splitext(self.save_path)[0]}.{fmt.lower()}"
-                    self.path_label.setText(self.save_path) # we would truncate here too, but okay for now
+
+                    metrics = QFontMetrics(self.path_label.font())
+                    elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
+                    self.path_label.setText(elided)
+                    self.path_label.setToolTip(self.save_path)
 
                 try:
                     self.data_recorder.start_recording(self.save_path, format=fmt)
@@ -511,14 +617,12 @@ class MainWindow(QMainWindow):
             self.worker.set_connection_params(mode, ip, port)
             self.worker.start()
 
-            # Start UI timer
             self.ui_timer.start(self.refresh_rate_ms)
 
             self.btn_connect.setText("断开连接")
             self.btn_connect.setObjectName("btnDisconnect")
-            self.apply_theme() # Reapply to update button color
+            self.apply_theme() # Refresh styling
 
-            # Disable inputs
             self.ip_input.setEnabled(False)
             self.port_input.setEnabled(False)
             self.interval_input.setEnabled(False)
@@ -536,7 +640,6 @@ class MainWindow(QMainWindow):
             self.btn_connect.setObjectName("btnConnect")
             self.apply_theme()
 
-            # Enable inputs
             self.ip_input.setEnabled(True)
             self.port_input.setEnabled(True)
             self.interval_input.setEnabled(True)
@@ -544,44 +647,52 @@ class MainWindow(QMainWindow):
             self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
-        status_zh = {"Connected": "已连接", "Disconnected": "未连接", "Error": "错误"}.get(status, status)
-
         if status == "Connected":
             self.status_capsule.setText("● 已连接")
-            self.status_capsule.setStyleSheet("background-color: #DCFCE7; color: #16A34A; border-radius: 16px; padding: 6px 16px; font-weight: bold;")
+            self.status_capsule.setObjectName("statusCapsule_Connected")
+            self.sys_values["连接状态"].setText("已连接")
         elif status == "Disconnected":
             self.status_capsule.setText("● 未连接")
-            self.status_capsule.setStyleSheet("background-color: #F1F5F9; color: #64748B; border-radius: 16px; padding: 6px 16px; font-weight: bold;")
+            self.status_capsule.setObjectName("statusCapsule_Disconnected")
+            self.sys_values["连接状态"].setText("未连接")
         else:
             self.status_capsule.setText("● 错误")
-            self.status_capsule.setStyleSheet("background-color: #FEE2E2; color: #DC2626; border-radius: 16px; padding: 6px 16px; font-weight: bold;")
+            self.status_capsule.setObjectName("statusCapsule_Error")
+            self.sys_values["连接状态"].setText("错误")
 
-            # If error occurred, auto disconnect UI state
             if self.worker.is_running:
                  self.toggle_connection()
 
-        self.update_status_bar()
+        self.style().unpolish(self.status_capsule)
+        self.style().polish(self.status_capsule)
+        self.update_status()
 
     def on_error_occurred(self, err_msg):
         self.last_error = err_msg
-        self.update_status_bar()
+        self.update_status()
 
-    def on_stats_updated(self, recv, errors):
-        # We handle this in update_ui so it's rate limited
-        pass
-
-    def update_status_bar(self):
+    def update_status(self):
         conn_str = self.status_capsule.text().replace("● ", "")
-
         save_str = "正在保存" if self.data_recorder.is_recording else "未保存"
 
-        # Calculate uptime
         run_time_str = "00:00:00"
         if self.worker.is_running and self.worker.start_time > 0:
             import time
             elapsed = int(time.time() - self.worker.start_time)
             run_time_str = f"{elapsed//3600:02d}:{(elapsed%3600)//60:02d}:{elapsed%60:02d}"
 
+        # Update System Status Card
+        self.sys_values["有效帧"].setText(str(self.worker.recv_frames))
+        self.sys_values["错误帧"].setText(str(self.worker.error_frames))
+        self.sys_values["运行时间"].setText(run_time_str)
+        self.sys_values["保存状态"].setText(save_str)
+
+        err_display = self.last_error
+        if err_display.startswith("最近错误："):
+            err_display = err_display.replace("最近错误：", "")
+        self.sys_values["最近错误"].setText(err_display)
+
+        # Update bottom status bar
         status_text = (
             f"连接状态：{conn_str} | "
             f"有效帧：{self.worker.recv_frames} | "
@@ -593,15 +704,13 @@ class MainWindow(QMainWindow):
         self.statusBar.showMessage(status_text)
 
     def update_ui(self):
-        """Called by QTimer to update plots and values from buffer."""
-        self.update_status_bar()
+        self.update_status()
 
         t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz = self.data_buffer.get_data()
 
         if not t_data:
             return
 
-        # Update plots
         self.curve_ch1.setData(t_data, ch1)
         self.curve_ch2.setData(t_data, ch2)
         self.curve_ch3.setData(t_data, ch3)
@@ -611,7 +720,6 @@ class MainWindow(QMainWindow):
         self.curve_fy.setData(t_data, fy)
         self.curve_fz.setData(t_data, fz)
 
-        # Update latest values
         self.card_ch1.set_value(ch1[-1])
         self.card_ch2.set_value(ch2[-1])
         self.card_ch3.set_value(ch3[-1])
@@ -620,11 +728,6 @@ class MainWindow(QMainWindow):
         self.card_fx.set_value(fx[-1])
         self.card_fy.set_value(fy[-1])
         self.card_fz.set_value(fz[-1])
-
-        # Update alarm cards if data is available
-        # we can't get this from data_buffer directly unless we add it, but since alarms change rarely we can just
-        # let it be handled by a signal if needed, or query worker for latest alarms.
-        # For UI stub purposes, leaving as "unconfigured"
 
     def closeEvent(self, event):
         if self.worker.is_running:
