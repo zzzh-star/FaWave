@@ -14,7 +14,7 @@ import pyqtgraph as pg
 from .advanced_settings_dialog import AdvancedSettingsDialog
 from ..workers.acquisition_worker import AcquisitionWorker
 from ..data.data_buffer import DataBuffer
-from ..data.data_recorder import DataRecorder
+from ..data.async_data_recorder import AsyncDataRecorder
 
 class SegmentedControl(QWidget):
     currentChanged = Signal(str)
@@ -159,7 +159,7 @@ class MainWindow(QMainWindow):
         self.last_error = "无"
 
         self.data_buffer = DataBuffer(max_points=config.get("ui", {}).get("max_plot_points", 2000))
-        self.data_recorder = DataRecorder()
+        self.data_recorder = AsyncDataRecorder()
         self.worker = AcquisitionWorker(config, self.data_buffer, self.data_recorder, self.logger)
 
         self.worker.connection_status_changed.connect(self.on_connection_status_changed)
@@ -304,6 +304,7 @@ class MainWindow(QMainWindow):
         record_layout.setSpacing(12)
 
         self.record_checkbox = QCheckBox("启用本地存储")
+        self.record_checkbox.stateChanged.connect(self.on_record_toggled)
 
         fmt_layout = QVBoxLayout()
         fmt_layout.setSpacing(6)
@@ -315,8 +316,7 @@ class MainWindow(QMainWindow):
         self.path_btn.setMinimumHeight(40)
         self.path_btn.clicked.connect(self.select_save_path)
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.save_path = os.path.join(os.getcwd(), "Data", f"FaWave_Data_{timestamp}.csv")
+        self.save_path = ""
         self.path_label = QLabel(self.save_path)
         self.path_label.setProperty("class", "sys-stat-label")
         self.path_label.setToolTip(self.save_path)
@@ -604,7 +604,7 @@ class MainWindow(QMainWindow):
         grid.setVerticalSpacing(12)
         grid.setHorizontalSpacing(16)
 
-        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "解耦后端", "验证状态", "输入单位"]
+        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "算法状态", "输入单位"]
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
@@ -633,9 +633,7 @@ class MainWindow(QMainWindow):
         self.sys_values["连接状态"].setText("未连接")
         self.sys_values["保存状态"].setText("未保存")
         self.sys_values["解耦状态"].setText("未启用")
-        # Adjust default text to match config parsing output
-        self.sys_values["解耦后端"].setText("未配置")
-        self.sys_values["验证状态"].setText("未验证")
+        self.sys_values["算法状态"].setText("Python解耦")
         self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "V"))
         self.sys_values["采集模式"].setText(self.get_display_mode())
 
@@ -695,12 +693,52 @@ class MainWindow(QMainWindow):
 
         self.apply_theme()
 
+    def on_record_toggled(self, state):
+        if state == Qt.Checked:
+            self.format_combo.setEnabled(False)
+            for btn in self.format_combo._buttons.values(): btn.setEnabled(False)
+            self.path_btn.setEnabled(False)
+
+            fmt = self.format_combo.currentText()
+            if not self.save_path:
+                from ..utils.resource import get_exe_dir
+                prefix = "FaWave_RealData" if self.get_worker_mode() == "TCP" else "FaWave_SimData"
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                self.save_path = os.path.join(get_exe_dir(), "Data", f"{prefix}_{timestamp}.{fmt.lower()}")
+            else:
+                if not self.save_path.lower().endswith(f".{fmt.lower()}"):
+                    self.save_path = f"{os.path.splitext(self.save_path)[0]}.{fmt.lower()}"
+
+            metrics = QFontMetrics(self.path_label.font())
+            elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
+            self.path_label.setText(elided)
+            self.path_label.setToolTip(self.save_path)
+
+            try:
+                self.data_recorder.start_recording(self.save_path, format=fmt)
+                self.logger.info(f"保存已开始: {self.save_path}")
+            except Exception as e:
+                self.logger.error(f"保存文件失败: {e}", exc_info=True)
+                QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{e}")
+                self.record_checkbox.setChecked(False)
+        else:
+            self.data_recorder.stop_recording()
+            self.format_combo.setEnabled(True)
+            for btn in self.format_combo._buttons.values(): btn.setEnabled(True)
+            self.path_btn.setEnabled(True)
+            self.logger.info("保存已停止")
+
     def select_save_path(self):
+        if self.data_recorder.is_recording:
+            return
+
+        from ..utils.resource import get_exe_dir
         fmt = self.format_combo.currentText().lower()
-        default_dir = os.path.join(os.getcwd(), "Data")
+        default_dir = os.path.join(get_exe_dir(), "Data")
         os.makedirs(default_dir, exist_ok=True)
+        prefix = "FaWave_RealData" if self.get_worker_mode() == "TCP" else "FaWave_SimData"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_name = f"FaWave_Data_{timestamp}.{fmt}"
+        default_name = f"{prefix}_{timestamp}.{fmt}"
 
         file_path, _ = QFileDialog.getSaveFileName(
             self, "选择保存路径", os.path.join(default_dir, default_name),
@@ -776,8 +814,7 @@ class MainWindow(QMainWindow):
             self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "V"))
 
         # update system status
-        self.sys_values["解耦后端"].setText(getattr(self.worker, "decoder_backend_str", "未配置"))
-        self.sys_values["验证状态"].setText(getattr(self.worker, "decoder_validated_str", "未验证"))
+        self.sys_values["算法状态"].setText("Python解耦运行中" if self.worker.is_running else "Python解耦")
         self.sys_values["解耦状态"].setText("未初始化")
 
     def toggle_connection(self):
@@ -798,24 +835,6 @@ class MainWindow(QMainWindow):
 
             worker_mode = self.get_worker_mode()
 
-            if self.record_checkbox.isChecked():
-                fmt = self.format_combo.currentText()
-                if not self.save_path.lower().endswith(f".{fmt.lower()}"):
-                    self.save_path = f"{os.path.splitext(self.save_path)[0]}.{fmt.lower()}"
-
-                    metrics = QFontMetrics(self.path_label.font())
-                    elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
-                    self.path_label.setText(elided)
-                    self.path_label.setToolTip(self.save_path)
-
-                try:
-                    self.data_recorder.start_recording(self.save_path, format=fmt)
-                    self.logger.info(f"保存路径: {self.save_path}")
-                except Exception as e:
-                    self.logger.error(f"保存文件失败: {e}", exc_info=True)
-                    QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{e}")
-                    return
-
             self.logger.info(f"连接参数: IP={ip}, Port={port}, Mode={worker_mode}")
             self.worker.set_connection_params(worker_mode, ip, port)
             self.worker.start()
@@ -833,13 +852,17 @@ class MainWindow(QMainWindow):
             self.btn_advanced.setEnabled(False)
             # Need to disable buttons inside the segmented control manually if disabling widget isn't styled properly
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(False)
-            self.record_checkbox.setEnabled(False)
 
         else:
             # Disconnect
             self.logger.info("用户主动断开连接")
             self.worker.stop()
-            self.data_recorder.stop_recording()
+
+            if self.record_checkbox.isChecked():
+                 self.record_checkbox.setChecked(False) # implicitly stops recording
+            else:
+                 self.data_recorder.stop_recording() # safety catch
+
             self.ui_timer.stop()
 
             self.btn_connect.setText("建立连接")
@@ -852,7 +875,6 @@ class MainWindow(QMainWindow):
             self.mode_combo.setEnabled(True)
             self.btn_advanced.setEnabled(True)
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(True)
-            self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
         is_simulation = self.get_display_mode() == "仿真演示"
@@ -886,7 +908,19 @@ class MainWindow(QMainWindow):
 
     def update_status(self):
         conn_str = self.status_capsule.text().replace("● ", "")
-        save_str = "正在保存" if self.data_recorder.is_recording else "未保存"
+
+        save_str = "未保存"
+        if self.data_recorder.is_recording:
+            status = self.data_recorder.get_status()
+            if status["queued"] > 5000:
+                save_str = "写入积压"
+            else:
+                save_str = "正在保存"
+        else:
+            # We don't have "保存已停止" strictly tracked unless we add state, but unchecked is enough.
+            if hasattr(self, 'record_checkbox') and not self.record_checkbox.isChecked() and getattr(self.data_recorder, 'saved_count', 0) > 0:
+                save_str = "保存已停止"
+
         acq_mode = self.get_display_mode()
 
         run_time_str = "00:00:00"
@@ -958,8 +992,7 @@ class MainWindow(QMainWindow):
         t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status, backend, validated = self.data_buffer.get_data()
 
         self.sys_values["解耦状态"].setText(decoder_status)
-        self.sys_values["解耦后端"].setText(backend)
-        self.sys_values["验证状态"].setText(validated)
+        # Algorithm state is statically tied to python backend now
         self.f_status.setText(decoder_status)
 
         if not t_data:

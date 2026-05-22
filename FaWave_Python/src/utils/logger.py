@@ -22,8 +22,10 @@ def setup_logger(name="FaWaveLogger", log_level=logging.INFO):
         console_handler.setFormatter(formatter)
         logger.addHandler(console_handler)
 
+        from .resource import get_exe_dir
+
         # File handler
-        logs_dir = os.path.join(os.getcwd(), 'logs')
+        logs_dir = os.path.join(get_exe_dir(), 'logs')
         os.makedirs(logs_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d")
         log_file = os.path.join(logs_dir, f"FaWave_{timestamp}.log")

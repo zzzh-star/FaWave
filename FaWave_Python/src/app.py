@@ -5,26 +5,21 @@ from PySide6.QtWidgets import QApplication
 from .ui.main_window import MainWindow
 from .utils.logger import setup_logger
 
+from .utils.resource import config_path as get_config_path
+
 def load_config():
-    # If running as executable, the config might be in a different path
-    # But PyInstaller --add-data puts it in the same relative location
-    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    config_path = os.path.join(base_dir, 'config', 'default_config.json')
-
-    if not os.path.exists(config_path):
-        # Fallback to current working directory
-        config_path = os.path.join(os.getcwd(), 'config', 'default_config.json')
-
+    target_config = get_config_path()
     try:
-        with open(config_path, 'r') as f:
+        with open(target_config, 'r', encoding='utf-8') as f:
             return json.load(f)
     except Exception as e:
-        print(f"Failed to load config from {config_path}: {e}")
+        print(f"Failed to load config from {target_config}: {e}")
         # Return a minimal default config if not found
         return {
             "device_ip": "192.168.1.82",
-            "device_port": 16006,
-            "communication_mode": "Mock"
+            "device_port": 16008,
+            "communication_mode": "Mock",
+            "force_decoder": {"input_unit": "V", "input_scale_to_v": 1.0}
         }
 
 def run_app():

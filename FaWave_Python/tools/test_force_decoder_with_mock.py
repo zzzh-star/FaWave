@@ -25,21 +25,15 @@ def main():
 
     # Setup decoder logic just like the AcquisitionWorker does
     force_cfg = config.get("force_decoder", {})
-    backend = force_cfg.get("backend", "c_dll")
 
-    if backend == "c_dll":
-        from src.force.force_decoder_c import CForceDecoder
-        decoder = CForceDecoder(config)
-        decoder_backend_str = "C语言后端"
-    else:
-        from src.force.force_decoder import ForceDecoder
-        decoder = ForceDecoder(config)
-        decoder_backend_str = "Python移植"
+    from src.force.force_decoder import ForceDecoder
+    decoder = ForceDecoder(config)
+    decoder_backend_str = "Python解耦"
 
     input_unit = force_cfg.get("input_unit", "V")
     input_scale_to_v = force_cfg.get("input_scale_to_v", 1.0)
 
-    print(f"解耦后端: {decoder_backend_str}")
+    print(f"解耦算法: {decoder_backend_str}")
     print(f"输入单位: {input_unit} | 换算系数: {input_scale_to_v}")
 
     total_time_ms = 12000  # 12 seconds

@@ -30,10 +30,7 @@
     },
     "force_decoder": {
         "enabled": true,
-        "backend": "c_dll",
-        "allow_python_fallback": true,
-        "python_backend_validated": false,
-        "c_dll_path": "src/force/c_backend/force_decoder.dll",
+        "algorithm": "python_force_decoder",
         "input_unit": "V",
         "input_scale_to_v": 1.0,
         "startup_warmup_ms": 5000,
@@ -43,18 +40,18 @@
             [17.6342, -0.1770, -20.2660, 0.3688],
             [-7.9958, 19.9397, -6.9973, -17.1562]
         ],
+        "calibration": {
+            "name": "default_4ch_force_matrix",
+            "version": "v1.0",
+            "date": "2026-05-20",
+            "description": "Python implementation of the original Keil force decoupling logic; input unit is V"
+        },
         "filter": {
             "input_ema_alpha": 0.03,
             "force_ema_alpha_fz": 0.10,
             "force_ema_alpha_fx": 0.15,
             "force_ema_alpha_fy": 0.15,
             "use_median3_filter": true
-        },
-        "calibration": {
-            "name": "default_4ch_force_matrix",
-            "version": "v1.0",
-            "date": "2026-05-20",
-            "description": "Default 4-channel to 3-axis force decoupling matrix; input unit is V"
         },
         "baseline": {
             "auto_update_enabled": true,
