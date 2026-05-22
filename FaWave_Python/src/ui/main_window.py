@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 import time
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QLineEdit, QPushButton, QCheckBox,
                                QGroupBox, QGridLayout, QFormLayout, QFileDialog, QStatusBar, QMessageBox,
                                QSpacerItem, QSizePolicy, QSplitter, QScrollArea, QFrame, QListView, QButtonGroup)
@@ -174,6 +174,7 @@ class MainWindow(QMainWindow):
 
     def setup_ui(self):
         main_widget = QWidget()
+        main_widget.setObjectName("centralWidget")
         self.setCentralWidget(main_widget)
         main_layout = QVBoxLayout(main_widget)
         main_layout.setContentsMargins(16, 16, 16, 8)
@@ -649,7 +650,20 @@ class MainWindow(QMainWindow):
             theme_file = 'light.qss' if self.current_theme == 'light' else 'dark.qss'
             qss_path = os.path.join(os.path.dirname(__file__), 'themes', theme_file)
             with open(qss_path, 'r', encoding='utf-8') as f:
-                self.setStyleSheet(f.read())
+                stylesheet = f.read()
+
+            # Apply the stylesheet globally to all top-level widgets so Dialogs catch it automatically
+            app = QApplication.instance()
+            if app:
+                app.setStyleSheet(stylesheet)
+
+                # Force polish on all widgets to prevent artifacting
+                for widget in app.allWidgets():
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
+                    widget.update()
+            else:
+                self.setStyleSheet(stylesheet)
 
             # Update pg plots background
             bg_color = '#FFFFFF' if self.current_theme == 'light' else '#0B1120'
@@ -680,6 +694,8 @@ class MainWindow(QMainWindow):
                 except Exception as e:
                     self.logger.warning(f"Could not set DWM dark mode: {e}")
 
+            self.update()
+            self.repaint()
         except Exception as e:
             print(f"Failed to load stylesheet: {e}")
 

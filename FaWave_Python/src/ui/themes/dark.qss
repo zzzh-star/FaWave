@@ -473,3 +473,6 @@ QDialog#advancedSettingsDialog QDialogButtonBox QPushButton {
     padding: 8px 16px;
     font-weight: 600;
 }
+QWidget#centralWidget {
+    background-color: #0F172A;
+}

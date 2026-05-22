@@ -452,3 +452,6 @@ QDialog#advancedSettingsDialog QPushButton#btnCheckC {
 QDialog#advancedSettingsDialog QPushButton#btnCheckC:hover {
     background-color: #CBD5E1;
 }
+QWidget#centralWidget {
+    background-color: #F4F7FB;
+}

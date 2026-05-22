@@ -148,8 +148,10 @@ class AsyncDataRecorder:
                 pass
 
             current_time = time.time()
-            if len(batch) >= batch_size or (current_time - last_flush_time) >= flush_interval:
-                if batch and self._csv_writer:
+            # If batch gets too big, or it's been long enough AND we have items, flush.
+            # On shutdown (not is_recording), also flush remaining items.
+            if len(batch) >= batch_size or (batch and (current_time - last_flush_time) >= flush_interval) or (not self.is_recording and batch):
+                if self._csv_writer:
                     self._csv_writer.writerows(batch)
                     self._csv_file.flush()
                     self.saved_count += len(batch)
