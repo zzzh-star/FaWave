@@ -27,7 +27,7 @@ class DataRecorder:
         headers = [
             "AbsoluteTime", "RelativeTime_s", "SampleIndex",
             "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
-            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus",
+            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus", "DecoderBackend", "DecoderValidated",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]
@@ -75,6 +75,8 @@ class DataRecorder:
             data_dict.get("fy", 0.0),
             data_dict.get("fz", 0.0),
             data_dict.get("decoder_status", "未启用"),
+            data_dict.get("decoder_backend", "未配置"),
+            data_dict.get("decoder_validated", "未验证"),
             alarm1,
             alarm2,
             alarm3,
@@ -98,7 +100,7 @@ class DataRecorder:
         headers = [
             "AbsoluteTime", "RelativeTime_s", "SampleIndex",
             "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
-            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus",
+            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus", "DecoderBackend", "DecoderValidated",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]

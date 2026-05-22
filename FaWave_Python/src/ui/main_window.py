@@ -342,8 +342,13 @@ class MainWindow(QMainWindow):
         self.btn_clear.setMinimumHeight(40)
         self.btn_clear.clicked.connect(self.clear_plot)
 
+        self.btn_zero_force = QPushButton("三维力归零")
+        self.btn_zero_force.setMinimumHeight(40)
+        self.btn_zero_force.clicked.connect(self.zero_force)
+
         ctrl_layout.addWidget(self.btn_autoscale)
         ctrl_layout.addWidget(self.btn_clear)
+        ctrl_layout.addWidget(self.btn_zero_force)
         left_layout.addWidget(ctrl_group)
 
         left_layout.addStretch()
@@ -589,7 +594,7 @@ class MainWindow(QMainWindow):
         grid.setVerticalSpacing(12)
         grid.setHorizontalSpacing(16)
 
-        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态"]
+        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "解耦后端", "验证状态"]
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
@@ -618,6 +623,8 @@ class MainWindow(QMainWindow):
         self.sys_values["连接状态"].setText("未连接")
         self.sys_values["保存状态"].setText("未保存")
         self.sys_values["解耦状态"].setText("未启用")
+        self.sys_values["解耦后端"].setText("Python 移植")
+        self.sys_values["验证状态"].setText("未验证")
         self.sys_values["采集模式"].setText(self.get_display_mode())
 
         parent_layout.addWidget(sys_card)
@@ -698,6 +705,17 @@ class MainWindow(QMainWindow):
         self.curve_fx.setData([], [])
         self.curve_fy.setData([], [])
         self.curve_fz.setData([], [])
+
+    def zero_force(self):
+        if hasattr(self.worker, 'force_decoder') and self.worker.force_decoder:
+            res = self.worker.force_decoder.set_baseline(None)
+            if res == 0:
+                self.logger.info("用户执行三维力归零")
+                self.sys_values["解耦状态"].setText("已手动归零")
+            else:
+                QMessageBox.warning(self, "操作失败", "算法未初始化或未启用。")
+        else:
+            QMessageBox.warning(self, "操作失败", "解耦算法不可用。")
 
     def on_plot_interacted(self):
         if not self._programmatic_range_update and self.auto_follow:
@@ -892,9 +910,11 @@ class MainWindow(QMainWindow):
     def update_ui(self):
         self.update_status()
 
-        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status = self.data_buffer.get_data()
+        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status, backend, validated = self.data_buffer.get_data()
 
         self.sys_values["解耦状态"].setText(decoder_status)
+        self.sys_values["解耦后端"].setText(backend)
+        self.sys_values["验证状态"].setText(validated)
         self.f_status.setText(decoder_status)
 
         if not t_data:

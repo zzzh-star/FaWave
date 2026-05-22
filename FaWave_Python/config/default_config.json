@@ -23,6 +23,7 @@
     },
     "force_decoder": {
         "enabled": true,
+        "backend": "c_dll",
         "input_unit": "mV",
         "input_scale_to_v": 0.001,
         "startup_warmup_ms": 5000,

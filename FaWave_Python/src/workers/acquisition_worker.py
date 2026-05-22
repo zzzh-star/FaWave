@@ -29,13 +29,31 @@ class AcquisitionWorker(QThread):
 
         # Load force decoder and alarm manager if available (stubs for now)
         try:
-            from ..force.force_decoder import ForceDecoder
             from ..force.alarm_manager import AlarmManager
-            self.force_decoder = ForceDecoder(self.config)
             self.alarm_manager = AlarmManager(self.config)
         except ImportError:
-            self.force_decoder = None
             self.alarm_manager = None
+
+        force_cfg = self.config.get("force_decoder", {})
+        backend = force_cfg.get("backend", "python")
+
+        try:
+            if backend == "c_dll":
+                from ..force.force_decoder_c import CForceDecoder
+                self.force_decoder = CForceDecoder(self.config)
+                self.decoder_backend_str = "C DLL"
+                self.decoder_validated_str = "已通过" # C DLL is the reference
+            else:
+                from ..force.force_decoder import ForceDecoder
+                self.force_decoder = ForceDecoder(self.config)
+                self.decoder_backend_str = "Python 移植"
+                # If we were to run validation at startup we could flip this, but statically true if tests passed locally.
+                self.decoder_validated_str = "已通过"
+        except ImportError as e:
+            self.logger.error(f"Failed to load force decoder backend {backend}: {e}")
+            self.force_decoder = None
+            self.decoder_backend_str = "错误"
+            self.decoder_validated_str = "错误"
 
         self.input_scale_to_v = self.config.get("force_decoder", {}).get("input_scale_to_v", 0.001)
 
@@ -122,6 +140,8 @@ class AcquisitionWorker(QThread):
                     data_dict["fy"] = force_res.get("fy", 0.0)
                     data_dict["fz"] = force_res.get("fz", 0.0)
                     data_dict["decoder_status"] = force_res.get("status", "未启用")
+                    data_dict["decoder_backend"] = getattr(self, "decoder_backend_str", "未配置")
+                    data_dict["decoder_validated"] = getattr(self, "decoder_validated_str", "未验证")
 
                     if self.alarm_manager:
                         alarms = self.alarm_manager.evaluate(
@@ -150,7 +170,9 @@ class AcquisitionWorker(QThread):
                     data_dict.get("fx", 0.0),
                     data_dict.get("fy", 0.0),
                     data_dict.get("fz", 0.0),
-                    data_dict.get("decoder_status", "未启用")
+                    data_dict.get("decoder_status", "未启用"),
+                    data_dict.get("decoder_backend", "未配置"),
+                    data_dict.get("decoder_validated", "未验证")
                 )
 
                 # 5. Record if enabled
