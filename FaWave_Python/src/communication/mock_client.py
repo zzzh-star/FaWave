@@ -18,6 +18,13 @@ class MockClient(BaseClient):
 
         self.header_bytes = bytes.fromhex(self.header_hex)
 
+        self.mock_cfg = config.get("mock", {})
+        self.force_demo_enabled = self.mock_cfg.get("force_demo_enabled", True)
+        self.baseline_duration_s = self.mock_cfg.get("baseline_duration_s", 6.0)
+        self.baseline_noise_mv = self.mock_cfg.get("baseline_noise_mv", 1.0)
+        self.baseline_mv = self.mock_cfg.get("baseline_mv", [500.0, 1000.0, 200.0, -300.0])
+        self.dynamic_amplitude_mv = self.mock_cfg.get("dynamic_amplitude_mv", [80.0, 60.0, 50.0, 40.0])
+
     def connect(self):
         self._connected = True
         self.start_time = time.time()
@@ -35,15 +42,32 @@ class MockClient(BaseClient):
         if not self._connected:
             raise ConnectionError("Mock Client is not connected.")
 
+        import random
         t = time.time() - self.start_time
 
-        # Generate 4 mock float values (sine wave with different phases)
-        ch1 = math.sin(2 * math.pi * 1.0 * t) * 1000 + 500  # 1 Hz
-        ch2 = math.cos(2 * math.pi * 2.0 * t) * 1000 + 1000 # 2 Hz
-        ch3 = math.sin(2 * math.pi * 0.5 * t) * 500 + 200   # 0.5 Hz
-        ch4 = math.cos(2 * math.pi * 0.2 * t) * 800 - 300   # 0.2 Hz
-
-        values = [ch1, ch2, ch3, ch4]
+        if self.force_demo_enabled:
+            values = []
+            for i in range(4):
+                noise = (random.random() - 0.5) * 2 * self.baseline_noise_mv
+                if t <= self.baseline_duration_s:
+                    values.append(self.baseline_mv[i] + noise)
+                else:
+                    if i == 0:
+                        delta = self.dynamic_amplitude_mv[i] * math.sin(2 * math.pi * 0.8 * t)
+                    elif i == 1:
+                        delta = self.dynamic_amplitude_mv[i] * math.cos(2 * math.pi * 0.6 * t)
+                    elif i == 2:
+                        delta = self.dynamic_amplitude_mv[i] * math.sin(2 * math.pi * 0.5 * t + 0.7)
+                    else:
+                        delta = self.dynamic_amplitude_mv[i] * math.cos(2 * math.pi * 0.4 * t + 1.2)
+                    values.append(self.baseline_mv[i] + noise + delta)
+        else:
+            # Generate 4 mock float values (sine wave with different phases)
+            ch1 = math.sin(2 * math.pi * 1.0 * t) * 1000 + 500  # 1 Hz
+            ch2 = math.cos(2 * math.pi * 2.0 * t) * 1000 + 1000 # 2 Hz
+            ch3 = math.sin(2 * math.pi * 0.5 * t) * 500 + 200   # 0.5 Hz
+            ch4 = math.cos(2 * math.pi * 0.2 * t) * 800 - 300   # 0.2 Hz
+            values = [ch1, ch2, ch3, ch4]
 
         # Construct the raw frame
         # 1. Start with zeroes

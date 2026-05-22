@@ -26,8 +26,15 @@ class DataRecorder:
 
         headers = [
             "AbsoluteTime", "RelativeTime_s", "SampleIndex",
+            "AcquisitionMode",
             "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
-            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus", "DecoderBackend", "DecoderValidated",
+            "Fx_N", "Fy_N", "Fz_N",
+            "FxRaw_N", "FyRaw_N", "FzRaw_N",
+            "FxFiltered_N", "FyFiltered_N", "FzFiltered_N",
+            "D1_V", "D2_V", "D3_V", "D4_V",
+            "Baseline1_V", "Baseline2_V", "Baseline3_V", "Baseline4_V",
+            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "InputScaleToV",
+            "CalibrationVersion",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]
@@ -63,10 +70,14 @@ class DataRecorder:
         alarm2 = alarms[1]["level"] if len(alarms) > 1 else "未配置"
         alarm3 = alarms[2]["level"] if len(alarms) > 2 else "未配置"
 
+        d = data_dict.get("d", [0.0]*4)
+        baseline = data_dict.get("baseline", [0.0]*4)
+
         row = [
             abs_time,
             f"{rel_time:.3f}",
             sample_idx,
+            data_dict.get("acquisition_mode", "未知"),
             data_dict.get("ch1", 0.0),
             data_dict.get("ch2", 0.0),
             data_dict.get("ch3", 0.0),
@@ -74,9 +85,20 @@ class DataRecorder:
             data_dict.get("fx", 0.0),
             data_dict.get("fy", 0.0),
             data_dict.get("fz", 0.0),
+            data_dict.get("fx_raw", 0.0),
+            data_dict.get("fy_raw", 0.0),
+            data_dict.get("fz_raw", 0.0),
+            data_dict.get("fx_filtered", 0.0),
+            data_dict.get("fy_filtered", 0.0),
+            data_dict.get("fz_filtered", 0.0),
+            d[0], d[1], d[2], d[3],
+            baseline[0], baseline[1], baseline[2], baseline[3],
             data_dict.get("decoder_status", "未启用"),
+            data_dict.get("decoder_valid", False),
             data_dict.get("decoder_backend", "未配置"),
             data_dict.get("decoder_validated", "未验证"),
+            data_dict.get("input_scale_to_v", 1.0),
+            data_dict.get("calibration_version", "未知"),
             alarm1,
             alarm2,
             alarm3,
@@ -99,8 +121,15 @@ class DataRecorder:
 
         headers = [
             "AbsoluteTime", "RelativeTime_s", "SampleIndex",
+            "AcquisitionMode",
             "CH1_mV", "CH2_mV", "CH3_mV", "CH4_mV",
-            "Fx_N", "Fy_N", "Fz_N", "DecoderStatus", "DecoderBackend", "DecoderValidated",
+            "Fx_N", "Fy_N", "Fz_N",
+            "FxRaw_N", "FyRaw_N", "FzRaw_N",
+            "FxFiltered_N", "FyFiltered_N", "FzFiltered_N",
+            "D1_V", "D2_V", "D3_V", "D4_V",
+            "Baseline1_V", "Baseline2_V", "Baseline3_V", "Baseline4_V",
+            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "InputScaleToV",
+            "CalibrationVersion",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]

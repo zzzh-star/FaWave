@@ -64,6 +64,7 @@ class ForceDecoder:
         self.startup_begin_ms = 0
         self.startup_warmup_started = False
         self.startup_baseline_done = False
+        self.auto_update_enabled = self.config.get("baseline", {}).get("auto_update_enabled", True)
 
     def _clampf(self, v, lo, hi):
         if v < lo: return lo
@@ -114,17 +115,19 @@ class ForceDecoder:
         if not self.enabled:
             return {
                 "fx": 0.0, "fy": 0.0, "fz": 0.0,
-                "d": [0.0]*4,
-                "valid": False,
-                "status": "算法未启用"
+                "fx_raw": 0.0, "fy_raw": 0.0, "fz_raw": 0.0,
+                "fx_filtered": 0.0, "fy_filtered": 0.0, "fz_filtered": 0.0,
+                "d": [0.0]*4, "baseline": [0.0]*4,
+                "valid": False, "status": "未启用", "in_deadzone": False
             }
 
         if not self.initialized:
             return {
                 "fx": 0.0, "fy": 0.0, "fz": 0.0,
-                "d": [0.0]*4,
-                "valid": False,
-                "status": "未初始化"
+                "fx_raw": 0.0, "fy_raw": 0.0, "fz_raw": 0.0,
+                "fx_filtered": 0.0, "fy_filtered": 0.0, "fz_filtered": 0.0,
+                "d": [0.0]*4, "baseline": [0.0]*4,
+                "valid": False, "status": "未初始化", "in_deadzone": False
             }
 
         if not self.startup_warmup_started:
@@ -185,9 +188,10 @@ class ForceDecoder:
 
             return {
                 "fx": 0.0, "fy": 0.0, "fz": 0.0,
-                "d": [0.0]*4,
-                "valid": False,
-                "status": "基线建立中"
+                "fx_raw": 0.0, "fy_raw": 0.0, "fz_raw": 0.0,
+                "fx_filtered": 0.0, "fy_filtered": 0.0, "fz_filtered": 0.0,
+                "d": [0.0]*4, "baseline": list(self.baseline_v),
+                "valid": False, "status": "基线建立中", "in_deadzone": False
             }
 
         # 4. Smooth baseline update
@@ -216,15 +220,15 @@ class ForceDecoder:
         self.force_filt[1] = self._ema_alpha(fx_raw, self.force_filt[1], self.force_ema_alpha_fx)
         self.force_filt[2] = self._ema_alpha(fy_raw, self.force_filt[2], self.force_ema_alpha_fy)
 
-        fz = self.force_filt[0]
-        fx = self.force_filt[1]
-        fy = self.force_filt[2]
+        fz_filtered = self.force_filt[0]
+        fx_filtered = self.force_filt[1]
+        fy_filtered = self.force_filt[2]
 
         # 8. Normal auto baseline update logic
-        if self.stable_buf_full:
-            small_force = (abs(fz) < self.small_force_th_fz and
-                           abs(fx) < self.small_force_th_fx and
-                           abs(fy) < self.small_force_th_fy)
+        if self.stable_buf_full and self.auto_update_enabled:
+            small_force = (abs(fz_filtered) < self.small_force_th_fz and
+                           abs(fx_filtered) < self.small_force_th_fx and
+                           abs(fy_filtered) < self.small_force_th_fy)
 
             stable_voltage = True
             for ch in range(4):
@@ -245,18 +249,29 @@ class ForceDecoder:
                 self.stable_timing = False
 
         # 9. Deadzone
-        fz = self._apply_deadzone(fz, self.force_deadzone_fz)
-        fx = self._apply_deadzone(fx, self.force_deadzone_fx)
-        fy = self._apply_deadzone(fy, self.force_deadzone_fy)
+        fz = self._apply_deadzone(fz_filtered, self.force_deadzone_fz)
+        fx = self._apply_deadzone(fx_filtered, self.force_deadzone_fx)
+        fy = self._apply_deadzone(fy_filtered, self.force_deadzone_fy)
+
+        in_deadzone = (fz == 0.0 and fx == 0.0 and fy == 0.0)
+        status = "死区内" if in_deadzone else "已启用"
 
         # 10. Return result
         return {
             "fx": fx,
             "fy": fy,
             "fz": fz,
+            "fx_raw": fx_raw,
+            "fy_raw": fy_raw,
+            "fz_raw": fz_raw,
+            "fx_filtered": fx_filtered,
+            "fy_filtered": fy_filtered,
+            "fz_filtered": fz_filtered,
             "d": d,
+            "baseline": list(self.baseline_v),
             "valid": True,
-            "status": "解耦已启用"
+            "status": status,
+            "in_deadzone": in_deadzone
         }
 
     def set_baseline(self, baseline_v=None):

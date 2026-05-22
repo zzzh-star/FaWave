@@ -594,7 +594,7 @@ class MainWindow(QMainWindow):
         grid.setVerticalSpacing(12)
         grid.setHorizontalSpacing(16)
 
-        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "解耦后端", "验证状态"]
+        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "解耦后端", "验证状态", "输入单位"]
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
@@ -623,8 +623,10 @@ class MainWindow(QMainWindow):
         self.sys_values["连接状态"].setText("未连接")
         self.sys_values["保存状态"].setText("未保存")
         self.sys_values["解耦状态"].setText("未启用")
-        self.sys_values["解耦后端"].setText("Python 移植")
+        # Adjust default text to match config parsing output
+        self.sys_values["解耦后端"].setText("未配置")
         self.sys_values["验证状态"].setText("未验证")
+        self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "mV"))
         self.sys_values["采集模式"].setText(self.get_display_mode())
 
         parent_layout.addWidget(sys_card)
@@ -707,13 +709,9 @@ class MainWindow(QMainWindow):
         self.curve_fz.setData([], [])
 
     def zero_force(self):
-        if hasattr(self.worker, 'force_decoder') and self.worker.force_decoder:
-            res = self.worker.force_decoder.set_baseline(None)
-            if res == 0:
-                self.logger.info("用户执行三维力归零")
-                self.sys_values["解耦状态"].setText("已手动归零")
-            else:
-                QMessageBox.warning(self, "操作失败", "算法未初始化或未启用。")
+        if hasattr(self.worker, 'request_force_zero'):
+            self.worker.request_force_zero()
+            # Status will be updated via the normal UI poll of the worker's status
         else:
             QMessageBox.warning(self, "操作失败", "解耦算法不可用。")
 
@@ -819,6 +817,8 @@ class MainWindow(QMainWindow):
             self.status_capsule.setText(disp_text)
             self.status_capsule.setObjectName("statusCapsule_Connected")
             self.sys_values["连接状态"].setText(disp_text.replace("● ", ""))
+            if not is_simulation:
+                QTimer.singleShot(100, lambda: self.statusBar.showMessage("请保持传感器无载静止约 5 秒，用于自动建立三维力基线。", 5000))
         elif status == "Disconnected":
             self.status_capsule.setText("● 未连接")
             self.status_capsule.setObjectName("statusCapsule_Disconnected")

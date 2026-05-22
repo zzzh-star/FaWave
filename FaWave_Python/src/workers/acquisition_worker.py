@@ -56,6 +56,7 @@ class AcquisitionWorker(QThread):
             self.decoder_validated_str = "错误"
 
         self.input_scale_to_v = self.config.get("force_decoder", {}).get("input_scale_to_v", 0.001)
+        self.calibration_version = self.config.get("force_decoder", {}).get("calibration", {}).get("version", "未知")
 
         self.recv_frames = 0
         self.error_frames = 0
@@ -63,6 +64,8 @@ class AcquisitionWorker(QThread):
         self.max_consecutive_errors = 20
         self.sample_index = 0
         self.start_time = 0
+
+        self.zero_requested = False
 
     def set_connection_params(self, mode, ip, port, local_ip=""):
         self.mode = mode
@@ -87,6 +90,14 @@ class AcquisitionWorker(QThread):
             self.logger.info("连接成功")
             self.connection_status_changed.emit("Connected")
             self.start_time = time.time()
+
+            # Reset the ForceDecoder each time a connection is established to clear any previous warmups/baselines
+            if self.force_decoder:
+                if hasattr(self.force_decoder, 'reset'):
+                    self.force_decoder.reset()
+                elif hasattr(self.force_decoder, 'initialized'):
+                    self.force_decoder.initialized = False
+
         except Exception as e:
             self.logger.error(f"连接失败: {str(e)}", exc_info=True)
             self.error_occurred.emit(f"最近错误：TCP 连接失败 ({str(e)})")
@@ -100,6 +111,12 @@ class AcquisitionWorker(QThread):
             loop_start = time.time()
 
             try:
+                if self.zero_requested:
+                    if self.force_decoder and getattr(self.force_decoder, 'initialized', False):
+                        self.force_decoder.set_baseline(None)
+                        self.logger.info("用户执行三维力归零")
+                    self.zero_requested = False
+
                 # 1. Send request
                 self.client.send(request_frame)
 
@@ -139,17 +156,37 @@ class AcquisitionWorker(QThread):
                     data_dict["fx"] = force_res.get("fx", 0.0)
                     data_dict["fy"] = force_res.get("fy", 0.0)
                     data_dict["fz"] = force_res.get("fz", 0.0)
+                    data_dict["fx_raw"] = force_res.get("fx_raw", 0.0)
+                    data_dict["fy_raw"] = force_res.get("fy_raw", 0.0)
+                    data_dict["fz_raw"] = force_res.get("fz_raw", 0.0)
+                    data_dict["fx_filtered"] = force_res.get("fx_filtered", 0.0)
+                    data_dict["fy_filtered"] = force_res.get("fy_filtered", 0.0)
+                    data_dict["fz_filtered"] = force_res.get("fz_filtered", 0.0)
+                    data_dict["d"] = force_res.get("d", [0.0]*4)
+                    data_dict["baseline"] = force_res.get("baseline", [0.0]*4)
+
                     data_dict["decoder_status"] = force_res.get("status", "未启用")
+                    data_dict["decoder_valid"] = force_res.get("valid", False)
                     data_dict["decoder_backend"] = getattr(self, "decoder_backend_str", "未配置")
                     data_dict["decoder_validated"] = getattr(self, "decoder_validated_str", "未验证")
+                    data_dict["input_scale_to_v"] = self.input_scale_to_v
+                    data_dict["calibration_version"] = self.calibration_version
+                    data_dict["acquisition_mode"] = "真实设备" if self.mode == "TCP" else "仿真演示"
 
                     if self.alarm_manager:
-                        alarms = self.alarm_manager.evaluate(
-                            force_res.get("fx", 0.0),
-                            force_res.get("fy", 0.0),
-                            force_res.get("fz", 0.0)
-                        )
-                        data_dict["alarms"] = alarms
+                        if force_res.get("status") in ["已启用", "死区内"]:
+                            alarms = self.alarm_manager.evaluate(
+                                force_res.get("fx", 0.0),
+                                force_res.get("fy", 0.0),
+                                force_res.get("fz", 0.0)
+                            )
+                            data_dict["alarms"] = alarms
+                        else:
+                            data_dict["alarms"] = [
+                                {"level": "未配置", "message": "解耦未就绪"},
+                                {"level": "未配置", "message": "解耦未就绪"},
+                                {"level": "未配置", "message": "解耦未就绪"}
+                            ]
 
                 # Reset error counter on success
                 self.consecutive_errors = 0
@@ -244,6 +281,9 @@ class AcquisitionWorker(QThread):
                 pass
 
         self.connection_status_changed.emit("Disconnected")
+
+    def request_force_zero(self):
+        self.zero_requested = True
 
     def stop(self):
         self.is_running = False
