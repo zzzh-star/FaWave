@@ -1,0 +1,29 @@
+# Keil / MDK build outputs
+**/Objects/
+**/Listings/
+**/*.o
+**/*.d
+**/*.crf
+**/*.htm
+**/*.lnp
+**/*.map
+**/*.axf
+**/*.elf
+**/*.dep
+**/*.bak
+**/*.lst
+**/*.scvd
+**/*.uvguix.*
+**/*.uvgui.*
+**/*.uvoptx
+
+# Python / app outputs
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+Data/
+logs/
+*.exe
+*.spec
