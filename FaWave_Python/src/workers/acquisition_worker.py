@@ -34,29 +34,57 @@ class AcquisitionWorker(QThread):
         except ImportError:
             self.alarm_manager = None
 
+        self.init_decoder()
+
+        self.input_scale_to_v = self.config.get("force_decoder", {}).get("input_scale_to_v", 0.001)
+        self.calibration_name = self.config.get("force_decoder", {}).get("calibration", {}).get("name", "未配置")
+        self.calibration_version = self.config.get("force_decoder", {}).get("calibration", {}).get("version", "未知")
+        self.calibration_date = self.config.get("force_decoder", {}).get("calibration", {}).get("date", "未配置")
+        self.c_dll_path = self.config.get("force_decoder", {}).get("c_dll_path", "src/force/c_backend/force_decoder.dll")
+
+    def init_decoder(self):
         force_cfg = self.config.get("force_decoder", {})
-        backend = force_cfg.get("backend", "python")
+        backend = force_cfg.get("backend", "c_dll")
 
         try:
             if backend == "c_dll":
                 from ..force.force_decoder_c import CForceDecoder
                 self.force_decoder = CForceDecoder(self.config)
-                self.decoder_backend_str = "C DLL"
-                self.decoder_validated_str = "已通过" # C DLL is the reference
+                if getattr(self.force_decoder, 'dll', None):
+                    self.decoder_backend_str = "C语言后端"
+                    self.decoder_validated_str = "参考算法"
+                else:
+                    # Fallback
+                    allow_fallback = force_cfg.get("allow_python_fallback", True)
+                    if allow_fallback:
+                        from ..force.force_decoder import ForceDecoder
+                        self.force_decoder = ForceDecoder(self.config)
+                        self.decoder_backend_str = "Python移植"
+                        if force_cfg.get("python_backend_validated", False):
+                            self.decoder_validated_str = "已通过"
+                        else:
+                            self.decoder_validated_str = "未验证"
+                        self.logger.warning("C DLL not found. Falling back to Python backend.")
+                    else:
+                        self.force_decoder = None
+                        self.decoder_backend_str = "加载失败"
+                        self.decoder_validated_str = "错误"
+                        self.logger.warning("C DLL not found. Python fallback disabled in config.")
             else:
                 from ..force.force_decoder import ForceDecoder
                 self.force_decoder = ForceDecoder(self.config)
-                self.decoder_backend_str = "Python 移植"
-                # If we were to run validation at startup we could flip this, but statically true if tests passed locally.
-                self.decoder_validated_str = "已通过"
-        except ImportError as e:
+                self.decoder_backend_str = "Python移植"
+
+                # Check for python_backend_validated in config
+                if force_cfg.get("python_backend_validated", False):
+                    self.decoder_validated_str = "已通过"
+                else:
+                    self.decoder_validated_str = "未验证"
+        except Exception as e:
             self.logger.error(f"Failed to load force decoder backend {backend}: {e}")
             self.force_decoder = None
-            self.decoder_backend_str = "错误"
+            self.decoder_backend_str = "加载失败"
             self.decoder_validated_str = "错误"
-
-        self.input_scale_to_v = self.config.get("force_decoder", {}).get("input_scale_to_v", 0.001)
-        self.calibration_version = self.config.get("force_decoder", {}).get("calibration", {}).get("version", "未知")
 
         self.recv_frames = 0
         self.error_frames = 0
@@ -170,7 +198,10 @@ class AcquisitionWorker(QThread):
                     data_dict["decoder_backend"] = getattr(self, "decoder_backend_str", "未配置")
                     data_dict["decoder_validated"] = getattr(self, "decoder_validated_str", "未验证")
                     data_dict["input_scale_to_v"] = self.input_scale_to_v
+                    data_dict["calibration_name"] = self.calibration_name
                     data_dict["calibration_version"] = self.calibration_version
+                    data_dict["calibration_date"] = self.calibration_date
+                    data_dict["c_dll_path"] = self.c_dll_path
                     data_dict["acquisition_mode"] = "真实设备" if self.mode == "TCP" else "仿真演示"
 
                     if self.alarm_manager:

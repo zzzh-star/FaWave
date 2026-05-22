@@ -33,8 +33,8 @@ class DataRecorder:
             "FxFiltered_N", "FyFiltered_N", "FzFiltered_N",
             "D1_V", "D2_V", "D3_V", "D4_V",
             "Baseline1_V", "Baseline2_V", "Baseline3_V", "Baseline4_V",
-            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "InputScaleToV",
-            "CalibrationVersion",
+            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "DecoderDllPath", "InputScaleToV",
+            "CalibrationName", "CalibrationVersion", "CalibrationDate",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]
@@ -97,8 +97,11 @@ class DataRecorder:
             data_dict.get("decoder_valid", False),
             data_dict.get("decoder_backend", "未配置"),
             data_dict.get("decoder_validated", "未验证"),
+            data_dict.get("c_dll_path", "未加载"),
             data_dict.get("input_scale_to_v", 1.0),
+            data_dict.get("calibration_name", "未配置"),
             data_dict.get("calibration_version", "未知"),
+            data_dict.get("calibration_date", "未配置"),
             alarm1,
             alarm2,
             alarm3,
@@ -128,8 +131,8 @@ class DataRecorder:
             "FxFiltered_N", "FyFiltered_N", "FzFiltered_N",
             "D1_V", "D2_V", "D3_V", "D4_V",
             "Baseline1_V", "Baseline2_V", "Baseline3_V", "Baseline4_V",
-            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "InputScaleToV",
-            "CalibrationVersion",
+            "DecoderStatus", "DecoderValid", "DecoderBackend", "DecoderValidated", "DecoderDllPath", "InputScaleToV",
+            "CalibrationName", "CalibrationVersion", "CalibrationDate",
             "Alarm1", "Alarm2", "Alarm3",
             "RawHex", "TrailerHex", "Status"
         ]

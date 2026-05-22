@@ -30,7 +30,10 @@
     },
     "force_decoder": {
         "enabled": true,
-        "backend": "python",
+        "backend": "c_dll",
+        "allow_python_fallback": true,
+        "python_backend_validated": false,
+        "c_dll_path": "src/force/c_backend/force_decoder.dll",
         "input_unit": "mV",
         "input_scale_to_v": 0.001,
         "startup_warmup_ms": 5000,

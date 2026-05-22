@@ -279,6 +279,12 @@ class MainWindow(QMainWindow):
         self.mode_combo = SegmentedControl(["真实设备", "仿真演示"], default_acq_mode)
         conn_layout.addRow(self.mode_combo)
 
+        conn_layout.addRow(QLabel("解耦后端"))
+        default_backend = "C语言后端" if self.config.get("force_decoder", {}).get("backend") == "c_dll" else "Python移植"
+        self.backend_combo = SegmentedControl(["C语言后端", "Python移植"], default_backend)
+        self.backend_combo.currentChanged.connect(self.change_backend)
+        conn_layout.addRow(self.backend_combo)
+
         conn_layout.addRow(QLabel("请求间隔 / ms"))
         self.interval_input = QLineEdit(str(self.config.get("request_interval_ms", 20)))
         conn_layout.addRow(self.interval_input)
@@ -737,6 +743,28 @@ class MainWindow(QMainWindow):
     def get_display_mode(self):
         return self.mode_combo.currentText()
 
+    def change_backend(self, new_backend):
+        if self.worker.is_running:
+            QMessageBox.warning(self, "切换失败", "请先断开连接后再切换解耦后端。")
+            # revert selection
+            prev = "Python移植" if new_backend == "C语言后端" else "C语言后端"
+            self.backend_combo.setCurrentText(prev)
+            return
+
+        backend_str = "c_dll" if new_backend == "C语言后端" else "python"
+
+        if "force_decoder" not in self.config:
+            self.config["force_decoder"] = {}
+        self.config["force_decoder"]["backend"] = backend_str
+
+        # We need to re-init the decoder in the worker
+        self.worker.init_decoder()
+
+        # update system status
+        self.sys_values["解耦后端"].setText(getattr(self.worker, "decoder_backend_str", "未配置"))
+        self.sys_values["验证状态"].setText(getattr(self.worker, "decoder_validated_str", "未验证"))
+        self.sys_values["解耦状态"].setText("未初始化")
+
     def toggle_connection(self):
         if not self.worker.is_running:
             # Connect
@@ -787,8 +815,10 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(False)
             self.interval_input.setEnabled(False)
             self.mode_combo.setEnabled(False)
+            self.backend_combo.setEnabled(False)
             # Need to disable buttons inside the segmented control manually if disabling widget isn't styled properly
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(False)
+            for btn in self.backend_combo._buttons.values(): btn.setEnabled(False)
             self.record_checkbox.setEnabled(False)
 
         else:
@@ -806,7 +836,9 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(True)
             self.interval_input.setEnabled(True)
             self.mode_combo.setEnabled(True)
+            self.backend_combo.setEnabled(True)
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(True)
+            for btn in self.backend_combo._buttons.values(): btn.setEnabled(True)
             self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
