@@ -421,3 +421,34 @@ QSplitter::handle:horizontal {
 QSplitter::handle:hover {
     background-color: #CBD5E1;
 }
+/* Advanced Settings Dialog overrides */
+QDialog#advancedSettingsDialog {
+    background-color: #F4F7FB;
+}
+
+QDialog#advancedSettingsDialog QGroupBox#advancedSettingsCard {
+    background-color: #FFFFFF;
+    border: 1px solid #DDE5F0;
+    border-radius: 12px;
+    margin-top: 24px;
+    font-weight: bold;
+    color: #1F2937;
+    padding-top: 16px;
+    padding-bottom: 8px;
+}
+
+QDialog#advancedSettingsDialog QLabel {
+    color: #0F172A;
+}
+
+QDialog#advancedSettingsDialog QPushButton#btnCheckC {
+    background-color: #E2E8F0;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #0F172A;
+    font-weight: 600;
+}
+QDialog#advancedSettingsDialog QPushButton#btnCheckC:hover {
+    background-color: #CBD5E1;
+}

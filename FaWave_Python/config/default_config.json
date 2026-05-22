@@ -33,7 +33,7 @@
         "backend": "c_dll",
         "allow_python_fallback": true,
         "python_backend_validated": false,
-        "c_dll_path": "src/force/c_ref/force_decoder.dll",
+        "c_dll_path": "src/force/c_backend/force_decoder.dll",
         "input_unit": "V",
         "input_scale_to_v": 1.0,
         "startup_warmup_ms": 5000,

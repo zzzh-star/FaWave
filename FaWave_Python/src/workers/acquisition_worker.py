@@ -134,8 +134,13 @@ class AcquisitionWorker(QThread):
                     self.force_decoder.initialized = False
 
         except Exception as e:
-            self.logger.error(f"连接失败: {str(e)}", exc_info=True)
-            self.error_occurred.emit(f"最近错误：TCP 连接失败 ({str(e)})")
+            err_msg = str(e).lower()
+            if "timed out" in err_msg or "timeout" in err_msg:
+                self.logger.error("连接失败: timeout，可能原因包括设备未供电、网线未连接或端口未打开。")
+                self.error_occurred.emit("连接失败：请检查设备电源、IP 地址、端口号和网线连接。")
+            else:
+                self.logger.error(f"连接失败: {str(e)}", exc_info=True)
+                self.error_occurred.emit(f"连接失败: TCP 连接失败 ({str(e)})")
             self.connection_status_changed.emit("Error")
             self.is_running = False
             return
@@ -291,8 +296,8 @@ class AcquisitionWorker(QThread):
             except ConnectionError as e:
                 err_msg = str(e).lower()
                 if "timeout" in err_msg:
-                    self.logger.error("协议错误: 接收超时", exc_info=True)
-                    self.error_occurred.emit("最近错误：接收超时")
+                    self.logger.error("协议错误: 接收超时 (设备可能已断电或断开连接)", exc_info=True)
+                    self.error_occurred.emit("最近错误：接收超时，请检查设备连接或电源")
                 elif "broken" in err_msg or "closed" in err_msg:
                     self.logger.error("断开原因: 远程主机关闭连接", exc_info=True)
                     self.error_occurred.emit("最近错误：远程主机关闭连接")
