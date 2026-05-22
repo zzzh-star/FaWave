@@ -50,13 +50,15 @@ class AcquisitionWorker(QThread):
             if backend == "c_dll":
                 from ..force.force_decoder_c import CForceDecoder
                 self.force_decoder = CForceDecoder(self.config)
-                if getattr(self.force_decoder, 'dll', None):
+                if getattr(self.force_decoder, 'dll', None) and getattr(self.force_decoder, 'dll_valid', False):
                     self.decoder_backend_str = "C语言后端"
                     self.decoder_validated_str = "参考算法"
                 else:
-                    # Fallback
+                    # Check what exactly went wrong
+                    dll_missing = not getattr(self.force_decoder, 'dll', None)
                     allow_fallback = force_cfg.get("allow_python_fallback", True)
-                    if allow_fallback:
+
+                    if dll_missing and allow_fallback:
                         from ..force.force_decoder import ForceDecoder
                         self.force_decoder = ForceDecoder(self.config)
                         self.decoder_backend_str = "Python移植"
@@ -64,12 +66,17 @@ class AcquisitionWorker(QThread):
                             self.decoder_validated_str = "已通过"
                         else:
                             self.decoder_validated_str = "未验证"
-                        self.logger.warning("C DLL not found. Falling back to Python backend.")
+
+                        msg = "C语言后端 DLL 不存在，已切换 Python移植"
+                        self.error_occurred.emit(msg)
+                        self.logger.warning(msg)
                     else:
                         self.force_decoder = None
-                        self.decoder_backend_str = "加载失败"
-                        self.decoder_validated_str = "错误"
-                        self.logger.warning("C DLL not found. Python fallback disabled in config.")
+                        self.decoder_backend_str = "C语言后端加载失败" if dll_missing else "C语言后端接口错误"
+                        self.decoder_validated_str = "DLL缺失" if dll_missing else "错误"
+                        msg = "C语言后端 DLL 缺失，未启用降级" if dll_missing else "C语言后端接口校验失败"
+                        self.error_occurred.emit(msg)
+                        self.logger.warning(msg)
             else:
                 from ..force.force_decoder import ForceDecoder
                 self.force_decoder = ForceDecoder(self.config)
@@ -165,8 +172,10 @@ class AcquisitionWorker(QThread):
                     ]
 
                     if not getattr(self.force_decoder, 'initialized', False):
-                        self.logger.info(f"ForceDecoder 初始化: 单位={self.force_decoder.config.get('input_unit', 'mV')}, 换算比率={self.input_scale_to_v}")
-                        self.logger.info(f"解耦矩阵: {self.force_decoder.decouple_matrix}")
+                        self.logger.info(f"ForceDecoder 输入单位: {self.config.get('force_decoder', {}).get('input_unit', 'V')}")
+                        self.logger.info(f"InputScaleToV: {self.input_scale_to_v}")
+                        self.logger.info(f"解耦矩阵版本: {self.calibration_version}")
+                        self.logger.info(f"解耦后端: {self.decoder_backend_str}")
                         self.force_decoder.initialize(ch_v)
 
                     rel_time_ms = int((time.time() - self.start_time) * 1000)
@@ -197,6 +206,7 @@ class AcquisitionWorker(QThread):
                     data_dict["decoder_valid"] = force_res.get("valid", False)
                     data_dict["decoder_backend"] = getattr(self, "decoder_backend_str", "未配置")
                     data_dict["decoder_validated"] = getattr(self, "decoder_validated_str", "未验证")
+                    data_dict["input_unit"] = self.config.get("force_decoder", {}).get("input_unit", "V")
                     data_dict["input_scale_to_v"] = self.input_scale_to_v
                     data_dict["calibration_name"] = self.calibration_name
                     data_dict["calibration_version"] = self.calibration_version

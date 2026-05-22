@@ -111,3 +111,19 @@ QLabel.header-subtitle {
     font-size: 14px;
     color: #6B7280;
 }
+QSplitter::handle {
+    background-color: #0F172A;
+    border: none;
+}
+
+QSplitter::handle:vertical {
+    height: 4px;
+}
+
+QSplitter::handle:horizontal {
+    width: 4px;
+}
+
+QSplitter::handle:hover {
+    background-color: #334155;
+}

@@ -8,8 +8,10 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PySide6.QtCore import Qt, QTimer, QSize, Signal
 from PySide6.QtGui import QFontMetrics, QIcon
 from PySide6.QtSvgWidgets import QSvgWidget
+import ctypes
 import pyqtgraph as pg
 
+from .advanced_settings_dialog import AdvancedSettingsDialog
 from ..workers.acquisition_worker import AcquisitionWorker
 from ..data.data_buffer import DataBuffer
 from ..data.data_recorder import DataRecorder
@@ -231,11 +233,17 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(theme_label)
         theme_layout.addWidget(self.btn_theme)
 
+        self.btn_advanced = QPushButton("⚙ 高级设置")
+        self.btn_advanced.setObjectName("btnAdvanced")
+        self.btn_advanced.clicked.connect(self.open_advanced_settings)
+
         self.status_capsule = QLabel("● 未连接")
         self.status_capsule.setObjectName("statusCapsule_Disconnected")
         self.status_capsule.setAlignment(Qt.AlignCenter)
 
         header_right_layout.addWidget(theme_widget)
+        header_right_layout.addSpacing(16)
+        header_right_layout.addWidget(self.btn_advanced)
         header_right_layout.addSpacing(16)
         header_right_layout.addWidget(self.status_capsule)
 
@@ -278,12 +286,6 @@ class MainWindow(QMainWindow):
 
         self.mode_combo = SegmentedControl(["真实设备", "仿真演示"], default_acq_mode)
         conn_layout.addRow(self.mode_combo)
-
-        conn_layout.addRow(QLabel("解耦后端"))
-        default_backend = "C语言后端" if self.config.get("force_decoder", {}).get("backend") == "c_dll" else "Python移植"
-        self.backend_combo = SegmentedControl(["C语言后端", "Python移植"], default_backend)
-        self.backend_combo.currentChanged.connect(self.change_backend)
-        conn_layout.addRow(self.backend_combo)
 
         conn_layout.addRow(QLabel("请求间隔 / ms"))
         self.interval_input = QLineEdit(str(self.config.get("request_interval_ms", 20)))
@@ -371,6 +373,8 @@ class MainWindow(QMainWindow):
 
         # Splitter for the two plots
         plot_splitter = QSplitter(Qt.Vertical)
+        plot_splitter.setObjectName("plotSplitter")
+        plot_splitter.setHandleWidth(4)
 
         self.setup_voltage_plot(plot_splitter)
         self.setup_force_plot(plot_splitter)
@@ -401,10 +405,10 @@ class MainWindow(QMainWindow):
         grid.addWidget(QLabel("<b>原始电压</b>"), 0, 0, 1, 4)
 
         # Voltages
-        self.card_ch1 = ValueCard("通道 1", "mV", "#2563EB", compact=True)
-        self.card_ch2 = ValueCard("通道 2", "mV", "#F97316", compact=True)
-        self.card_ch3 = ValueCard("通道 3", "mV", "#10B981", compact=True)
-        self.card_ch4 = ValueCard("通道 4", "mV", "#8B5CF6", compact=True)
+        self.card_ch1 = ValueCard("通道 1", "V", "#2563EB", compact=True)
+        self.card_ch2 = ValueCard("通道 2", "V", "#F97316", compact=True)
+        self.card_ch3 = ValueCard("通道 3", "V", "#10B981", compact=True)
+        self.card_ch4 = ValueCard("通道 4", "V", "#8B5CF6", compact=True)
 
         grid.addWidget(self.card_ch1, 1, 0)
         grid.addWidget(self.card_ch2, 1, 1)
@@ -485,7 +489,7 @@ class MainWindow(QMainWindow):
 
         self.plot_voltage = pg.PlotWidget()
         self.plot_voltage.showGrid(x=True, y=True, alpha=0.3)
-        self.plot_voltage.setLabel('left', '电压', units='mV')
+        self.plot_voltage.setLabel('left', '电压 (V)')
         self.plot_voltage.setLabel('bottom', '相对时间', units='s')
         self.plot_voltage.setYRange(-2.5, 2.5)
 
@@ -632,7 +636,7 @@ class MainWindow(QMainWindow):
         # Adjust default text to match config parsing output
         self.sys_values["解耦后端"].setText("未配置")
         self.sys_values["验证状态"].setText("未验证")
-        self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "mV"))
+        self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "V"))
         self.sys_values["采集模式"].setText(self.get_display_mode())
 
         parent_layout.addWidget(sys_card)
@@ -656,11 +660,27 @@ class MainWindow(QMainWindow):
 
             for plot in [self.plot_voltage, self.plot_force]:
                 plot.setBackground(bg_color)
+                plot.getPlotItem().getViewBox().setBackgroundColor(bg_color)
+                plot.setStyleSheet("background: transparent; border: none;")
                 plot.getAxis('left').setPen(fg_color)
                 plot.getAxis('bottom').setPen(fg_color)
                 plot.getAxis('left').setTextPen(fg_color)
                 plot.getAxis('bottom').setTextPen(fg_color)
                 plot.showGrid(x=True, y=True, alpha=grid_alpha/255.0)
+
+            # Apply Windows DWM dark title bar if running on Windows
+            if os.name == 'nt':
+                try:
+                    hwnd = self.winId().__int__()
+                    DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                    set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+                    if self.current_theme == 'dark':
+                        value = ctypes.c_int(1)
+                    else:
+                        value = ctypes.c_int(0)
+                    set_window_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value))
+                except Exception as e:
+                    self.logger.warning(f"Could not set DWM dark mode: {e}")
 
         except Exception as e:
             print(f"Failed to load stylesheet: {e}")
@@ -743,22 +763,17 @@ class MainWindow(QMainWindow):
     def get_display_mode(self):
         return self.mode_combo.currentText()
 
-    def change_backend(self, new_backend):
+    def open_advanced_settings(self):
         if self.worker.is_running:
-            QMessageBox.warning(self, "切换失败", "请先断开连接后再切换解耦后端。")
-            # revert selection
-            prev = "Python移植" if new_backend == "C语言后端" else "C语言后端"
-            self.backend_combo.setCurrentText(prev)
+            QMessageBox.warning(self, "运行中", "采集运行中禁止修改高级设置。")
             return
 
-        backend_str = "c_dll" if new_backend == "C语言后端" else "python"
-
-        if "force_decoder" not in self.config:
-            self.config["force_decoder"] = {}
-        self.config["force_decoder"]["backend"] = backend_str
-
-        # We need to re-init the decoder in the worker
-        self.worker.init_decoder()
+        dialog = AdvancedSettingsDialog(self.config, self)
+        if dialog.exec_():
+            self.logger.info("更新高级设置")
+            # Re-init the decoder based on new config
+            self.worker.init_decoder()
+            self.sys_values["输入单位"].setText(self.config.get("force_decoder", {}).get("input_unit", "V"))
 
         # update system status
         self.sys_values["解耦后端"].setText(getattr(self.worker, "decoder_backend_str", "未配置"))
@@ -815,10 +830,9 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(False)
             self.interval_input.setEnabled(False)
             self.mode_combo.setEnabled(False)
-            self.backend_combo.setEnabled(False)
+            self.btn_advanced.setEnabled(False)
             # Need to disable buttons inside the segmented control manually if disabling widget isn't styled properly
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(False)
-            for btn in self.backend_combo._buttons.values(): btn.setEnabled(False)
             self.record_checkbox.setEnabled(False)
 
         else:
@@ -836,9 +850,8 @@ class MainWindow(QMainWindow):
             self.port_input.setEnabled(True)
             self.interval_input.setEnabled(True)
             self.mode_combo.setEnabled(True)
-            self.backend_combo.setEnabled(True)
+            self.btn_advanced.setEnabled(True)
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(True)
-            for btn in self.backend_combo._buttons.values(): btn.setEnabled(True)
             self.record_checkbox.setEnabled(True)
 
     def on_connection_status_changed(self, status):
