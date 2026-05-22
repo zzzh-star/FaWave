@@ -404,10 +404,10 @@ class MainWindow(QMainWindow):
         f_header = QHBoxLayout()
         f_header.setContentsMargins(0, 0, 0, 0)
         f_title = QLabel("<b>三维力</b>")
-        f_status = QLabel("解耦未启用")
-        f_status.setStyleSheet("color: #94A3B8; font-size: 12px;")
+        self.f_status = QLabel("解耦未启用")
+        self.f_status.setStyleSheet("color: #94A3B8; font-size: 12px;")
         f_header.addWidget(f_title)
-        f_header.addWidget(f_status)
+        f_header.addWidget(self.f_status)
         f_header.addStretch()
         f_header_widget = QWidget()
         f_header_widget.setLayout(f_header)
@@ -892,7 +892,10 @@ class MainWindow(QMainWindow):
     def update_ui(self):
         self.update_status()
 
-        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz = self.data_buffer.get_data()
+        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status = self.data_buffer.get_data()
+
+        self.sys_values["解耦状态"].setText(decoder_status)
+        self.f_status.setText(decoder_status)
 
         if not t_data:
             return

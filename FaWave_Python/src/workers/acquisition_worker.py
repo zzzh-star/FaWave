@@ -37,6 +37,8 @@ class AcquisitionWorker(QThread):
             self.force_decoder = None
             self.alarm_manager = None
 
+        self.input_scale_to_v = self.config.get("force_decoder", {}).get("input_scale_to_v", 0.001)
+
         self.recv_frames = 0
         self.error_frames = 0
         self.consecutive_errors = 0
@@ -92,13 +94,34 @@ class AcquisitionWorker(QThread):
 
                 # Decode forces if decoder is available
                 if self.force_decoder:
-                    force_res = self.force_decoder.decode(
-                        data_dict.get("ch1", 0.0),
-                        data_dict.get("ch2", 0.0),
-                        data_dict.get("ch3", 0.0),
-                        data_dict.get("ch4", 0.0)
-                    )
-                    data_dict.update(force_res)
+                    ch_v = [
+                        data_dict.get("ch1", 0.0) * self.input_scale_to_v,
+                        data_dict.get("ch2", 0.0) * self.input_scale_to_v,
+                        data_dict.get("ch3", 0.0) * self.input_scale_to_v,
+                        data_dict.get("ch4", 0.0) * self.input_scale_to_v
+                    ]
+
+                    if not getattr(self.force_decoder, 'initialized', False):
+                        self.logger.info(f"ForceDecoder 初始化: 单位={self.force_decoder.config.get('input_unit', 'mV')}, 换算比率={self.input_scale_to_v}")
+                        self.logger.info(f"解耦矩阵: {self.force_decoder.decouple_matrix}")
+                        self.force_decoder.initialize(ch_v)
+
+                    rel_time_ms = int((time.time() - self.start_time) * 1000)
+                    prev_startup_status = self.force_decoder.startup_baseline_done
+
+                    try:
+                        force_res = self.force_decoder.update(ch_v, rel_time_ms)
+                    except Exception as e:
+                        self.logger.error(f"解耦异常: {e}", exc_info=True)
+                        force_res = { "fx": 0.0, "fy": 0.0, "fz": 0.0, "status": "错误", "valid": False }
+
+                    if not prev_startup_status and self.force_decoder.startup_baseline_done:
+                        self.logger.info("开机基线建立完成。")
+
+                    data_dict["fx"] = force_res.get("fx", 0.0)
+                    data_dict["fy"] = force_res.get("fy", 0.0)
+                    data_dict["fz"] = force_res.get("fz", 0.0)
+                    data_dict["decoder_status"] = force_res.get("status", "未启用")
 
                     if self.alarm_manager:
                         alarms = self.alarm_manager.evaluate(
@@ -126,7 +149,8 @@ class AcquisitionWorker(QThread):
                     data_dict.get("ch4", 0.0),
                     data_dict.get("fx", 0.0),
                     data_dict.get("fy", 0.0),
-                    data_dict.get("fz", 0.0)
+                    data_dict.get("fz", 0.0),
+                    data_dict.get("decoder_status", "未启用")
                 )
 
                 # 5. Record if enabled

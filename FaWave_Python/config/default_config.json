@@ -22,6 +22,40 @@
         "language": "zh_CN"
     },
     "force_decoder": {
-        "enabled": false
+        "enabled": true,
+        "input_unit": "mV",
+        "input_scale_to_v": 0.001,
+        "startup_warmup_ms": 5000,
+        "matrix_order": "Fz_Fx_Fy",
+        "matrix": [
+            [39.2375, 29.8622, 24.3702, 32.1236],
+            [17.6342, -0.1770, -20.2660, 0.3688],
+            [-7.9958, 19.9397, -6.9973, -17.1562]
+        ],
+        "filter": {
+            "input_ema_alpha": 0.03,
+            "force_ema_alpha_fz": 0.10,
+            "force_ema_alpha_fx": 0.15,
+            "force_ema_alpha_fy": 0.15,
+            "use_median3_filter": true
+        },
+        "baseline": {
+            "baseline_smooth_alpha": 0.03,
+            "baseline_converge_th": 0.003,
+            "baseline_win": 30,
+            "baseline_range_th": 0.03,
+            "baseline_hold_ms": 1000,
+            "startup_range_th": 0.03
+        },
+        "deadzone": {
+            "fz": 1.0,
+            "fx": 0.5,
+            "fy": 0.5
+        },
+        "small_force_threshold": {
+            "fz": 4.0,
+            "fx": 3.5,
+            "fy": 3.5
+        }
     }
 }
