@@ -22,8 +22,8 @@ def generate_ico():
     draw.ellipse([(64, 64), (192, 192)], fill=(255, 255, 255, 255))
     draw.line([(80, 128), (120, 80), (160, 160), (200, 128)], fill=(37, 99, 235, 255), width=20, joint="curve")
 
-    # Save with multiple sizes
-    img.save(ico_path, format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
+    # Save with multiple sizes spanning required Windows limits natively
+    img.save(ico_path, format='ICO', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
     print(f"Successfully generated icon at {ico_path}")
 
 if __name__ == "__main__":
