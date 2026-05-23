@@ -14,13 +14,16 @@ class AdvancedSettingsDialog(QDialog):
         self.setWindowTitle("高级设置")
         self.setMinimumWidth(450)
 
-        # Apply dark titlebar explicitly on Windows
-        if os.name == 'nt' and parent and parent.current_theme == 'dark':
+        # Apply dark/light titlebar explicitly on Windows
+        if os.name == 'nt' and parent:
             try:
                 hwnd = self.winId().__int__()
                 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
                 set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
-                value = ctypes.c_int(1)
+                if parent.current_theme == 'dark':
+                    value = ctypes.c_int(1)
+                else:
+                    value = ctypes.c_int(0)
                 set_window_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(value), ctypes.sizeof(value))
             except Exception:
                 pass

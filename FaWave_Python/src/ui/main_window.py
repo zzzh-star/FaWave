@@ -151,11 +151,22 @@ class MainWindow(QMainWindow):
         self.current_theme = self.config.get("ui", {}).get("theme", "light")
         self.setWindowTitle("FaWave 多维力感知平台")
         from ..utils.resource import resource_path
-        icon_path = resource_path("assets/app_icon.svg")
+
+        # Prefer the generated ICO file, fallback to SVG if missing
+        icon_path = resource_path("assets/app_icon.ico")
+        if not os.path.exists(icon_path):
+            icon_path = resource_path("assets/app_icon.svg")
+
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-        self.setMinimumSize(1360, 780)
-        self.resize(1500, 900)
+
+        # Dynamically scale sizes to match target monitor width to prevent clipping
+        screen = QApplication.primaryScreen().availableGeometry()
+        w = min(1500, int(screen.width() * 0.9))
+        h = min(900, int(screen.height() * 0.9))
+
+        self.setMinimumSize(1280, 720)
+        self.resize(w, h)
 
         self.last_error = "无"
 
@@ -257,7 +268,8 @@ class MainWindow(QMainWindow):
 
     def setup_left_panel(self, parent_layout):
         left_scroll = QScrollArea()
-        left_scroll.setFixedWidth(360)
+        left_scroll.setMinimumWidth(320)
+        left_scroll.setMaximumWidth(360)
         left_scroll.setWidgetResizable(True)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -546,8 +558,8 @@ class MainWindow(QMainWindow):
 
     def setup_right_panel(self, parent_layout):
         right_scroll = QScrollArea()
-        right_scroll.setMinimumWidth(300)
-        right_scroll.setMaximumWidth(360)
+        right_scroll.setMinimumWidth(280)
+        right_scroll.setMaximumWidth(340)
         right_scroll.setWidgetResizable(True)
         right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -713,7 +725,9 @@ class MainWindow(QMainWindow):
         self.apply_theme()
 
     def on_record_toggled(self, state):
-        if state == Qt.Checked:
+        checked = self.record_checkbox.isChecked()
+
+        if checked:
             self.format_combo.setEnabled(False)
             for btn in self.format_combo._buttons.values(): btn.setEnabled(False)
             self.path_btn.setEnabled(False)
@@ -724,22 +738,26 @@ class MainWindow(QMainWindow):
                 prefix = "FaWave_RealData" if self.get_worker_mode() == "TCP" else "FaWave_SimData"
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 self.save_path = os.path.join(get_exe_dir(), "Data", f"{prefix}_{timestamp}.{fmt.lower()}")
-            else:
-                if not self.save_path.lower().endswith(f".{fmt.lower()}"):
-                    self.save_path = f"{os.path.splitext(self.save_path)[0]}.{fmt.lower()}"
+
+                # Try preparing the file before starting (handles dynamic directory creation + headers)
+                if not self.data_recorder.prepare_file(self.save_path, format=fmt):
+                     QMessageBox.warning(self, "保存错误", f"无法创建文件:\n{self.data_recorder.last_error}")
+                     self.record_checkbox.setChecked(False)
+                     return
 
             metrics = QFontMetrics(self.path_label.font())
             elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
             self.path_label.setText(elided)
             self.path_label.setToolTip(self.save_path)
 
-            try:
-                self.data_recorder.start_recording(self.save_path, format=fmt)
-                self.logger.info(f"保存已开始: {self.save_path}")
-            except Exception as e:
-                self.logger.error(f"保存文件失败: {e}", exc_info=True)
-                QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{e}")
+            success = self.data_recorder.start_recording(self.save_path, format=fmt)
+            if success:
+                self.logger.info(f"用户启用本地存储，开始写入数据: {self.save_path}")
+            else:
+                self.logger.error(f"启动保存异常: {self.data_recorder.last_error}", exc_info=True)
+                QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{self.data_recorder.last_error}")
                 self.record_checkbox.setChecked(False)
+            self.update_status()
         else:
             fmt = self.format_combo.currentText()
             if fmt == "XLSX" and self.data_recorder.is_recording:
@@ -752,9 +770,10 @@ class MainWindow(QMainWindow):
             self.format_combo.setEnabled(True)
             for btn in self.format_combo._buttons.values(): btn.setEnabled(True)
             self.path_btn.setEnabled(True)
-            self.logger.info("保存已停止")
+            self.logger.info(f"用户停止本地存储，保存已停止: {self.save_path}。 已保存行数: {self.data_recorder.saved_count}")
             if fmt == "XLSX":
                 self.statusBar.showMessage("保存完成", 3000)
+            self.update_status()
 
     def select_save_path(self):
         if self.data_recorder.is_recording:
@@ -773,12 +792,25 @@ class MainWindow(QMainWindow):
             f"数据文件 (*.{fmt})"
         )
         if file_path:
-            self.save_path = file_path
-            self.path_label.setToolTip(self.save_path)
+            if not file_path.lower().endswith(f".{fmt}"):
+                file_path = f"{os.path.splitext(file_path)[0]}.{fmt}"
 
-            metrics = QFontMetrics(self.path_label.font())
-            elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
-            self.path_label.setText(elided)
+            self.save_path = file_path
+
+            # Immediately prepare the file and write headers upon selection
+            success = self.data_recorder.prepare_file(self.save_path, format=fmt)
+
+            if success:
+                metrics = QFontMetrics(self.path_label.font())
+                elided = metrics.elidedText(self.save_path, Qt.ElideMiddle, 300)
+                self.path_label.setText(elided)
+                self.path_label.setToolTip(self.save_path)
+                self.logger.info(f"用户选择保存路径，文件已创建: {self.save_path}")
+            else:
+                QMessageBox.warning(self, "创建失败", f"无法创建文件:\n{self.data_recorder.last_error}")
+                self.save_path = ""
+                self.path_label.setText("未选择")
+            self.update_status()
 
     def update_plot_visibility(self):
         self.curve_ch1.setVisible(self.chk_ch1.isChecked())
@@ -963,17 +995,22 @@ class MainWindow(QMainWindow):
     def update_status(self):
         conn_str = self.status_capsule.text().replace("● ", "")
 
+        status = self.data_recorder.get_status()
+
         save_str = "未保存"
-        if self.data_recorder.is_recording:
-            status = self.data_recorder.get_status()
+        if status["state"] == "file_prepared":
+            save_str = "等待记录"
+        elif status["state"] == "recording":
             if status["queued"] > 5000:
                 save_str = "写入积压"
             else:
                 save_str = "正在保存"
-        else:
-            # We don't have "保存已停止" strictly tracked unless we add state, but unchecked is enough.
-            if hasattr(self, 'record_checkbox') and not self.record_checkbox.isChecked() and getattr(self.data_recorder, 'saved_count', 0) > 0:
-                save_str = "保存已停止"
+        elif status["state"] == "stopping":
+            save_str = "正在停止"
+        elif status["state"] == "stopped":
+            save_str = "保存已停止"
+        elif status["state"] == "error":
+            save_str = "保存错误"
 
         acq_mode = self.get_display_mode()
 

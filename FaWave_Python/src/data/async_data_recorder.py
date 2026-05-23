@@ -10,6 +10,10 @@ class AsyncDataRecorder:
         self.file_path = None
         self.file_format = None
         self.is_recording = False
+        self.state = "idle" # idle, file_prepared, recording, stopping, stopped, error
+        self.last_error = ""
+        self.file_path = ""
+        self.file_format = ""
 
         self.queue = queue.Queue()
         self._writer_thread = None
@@ -33,56 +37,99 @@ class AsyncDataRecorder:
 
         self.queued_count = 0
         self.saved_count = 0
+        self.started_at = 0
+        self.stopped_at = 0
 
-    def start_recording(self, file_path, format="CSV"):
+    def prepare_file(self, file_path, format="CSV"):
+        """Creates the file and writes headers immediately, but does not start the writer loop."""
         if self.is_recording:
-            return
+            return False
 
         self.file_path = file_path
         self.file_format = format.upper()
-        self.is_recording = True
 
         self.queued_count = 0
         self.saved_count = 0
         self.queue = queue.Queue()
+        self.last_error = ""
 
-        os.makedirs(os.path.dirname(os.path.abspath(self.file_path)), exist_ok=True)
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(self.file_path)), exist_ok=True)
 
-        if self.file_format == "CSV":
-            self._csv_file = open(self.file_path, mode='w', newline='', encoding='utf-8')
-            self._csv_writer = csv.writer(self._csv_file)
-            self._csv_writer.writerow(self.csv_headers)
-            self._csv_file.flush()
-        elif self.file_format == "XLSX":
-            # For XLSX we write to a temporary CSV during acquisition to prevent blocking
-            self._tmp_path = self.file_path + ".tmp.csv"
-            self._csv_file = open(self._tmp_path, mode='w', newline='', encoding='utf-8')
-            self._csv_writer = csv.writer(self._csv_file)
-            self._csv_writer.writerow(self.csv_headers)
-            self._csv_file.flush()
+            # Close existing if leaked
+            if self._csv_file:
+                try: self._csv_file.close()
+                except: pass
+
+            if self.file_format == "CSV":
+                self._csv_file = open(self.file_path, mode='w', newline='', encoding='utf-8')
+                self._csv_writer = csv.writer(self._csv_file)
+                self._csv_writer.writerow(self.csv_headers)
+                self._csv_file.flush()
+            elif self.file_format == "XLSX":
+                self._tmp_path = self.file_path + ".tmp.csv"
+                self._csv_file = open(self._tmp_path, mode='w', newline='', encoding='utf-8')
+                self._csv_writer = csv.writer(self._csv_file)
+                self._csv_writer.writerow(self.csv_headers)
+                self._csv_file.flush()
+
+            self.state = "file_prepared"
+            return True
+        except Exception as e:
+            self.state = "error"
+            self.last_error = str(e)
+            return False
+
+    def start_recording(self, file_path=None, format="CSV"):
+        """Starts the background acquisition queueing."""
+        if self.is_recording:
+            return True
+
+        if self.state != "file_prepared" or (file_path and self.file_path != file_path):
+            success = self.prepare_file(file_path, format)
+            if not success:
+                return False
+
+        self.is_recording = True
+        self.state = "recording"
+        self.started_at = time.time()
+
+        # In a real edge case, the file might have been closed manually. Check.
+        if not self._csv_file or self._csv_file.closed:
+             mode = 'a'
+             target = self.file_path if self.file_format == "CSV" else self._tmp_path
+             self._csv_file = open(target, mode='a', newline='', encoding='utf-8')
+             self._csv_writer = csv.writer(self._csv_file)
 
         self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self._writer_thread.start()
+        return True
 
     def stop_recording(self):
-        if not self.is_recording:
+        if not self.is_recording and self.state != "recording":
             return
 
         self.is_recording = False
+        self.state = "stopping"
 
         if self._writer_thread and self._writer_thread.is_alive():
             # Wait for thread to finish writing its queue safely without an arbitrary timeout
             self._writer_thread.join()
 
         if self._csv_file:
-            self._csv_file.flush()
-            self._csv_file.close()
+            try:
+                self._csv_file.flush()
+                self._csv_file.close()
+            except:
+                pass
             self._csv_file = None
             self._csv_writer = None
 
         if self.file_format == "XLSX":
-            # State management updates happen in MainWindow to show "Processing XLSX"
             self._convert_temp_csv_to_xlsx()
+
+        self.state = "stopped"
+        self.stopped_at = time.time()
 
     def record_point(self, abs_time, rel_time, sample_idx, data_dict, raw_hex="", status="OK", trailer_hex=""):
         if not self.is_recording:
@@ -141,7 +188,7 @@ class AsyncDataRecorder:
         batch = []
         batch_size = 100
         last_flush_time = time.time()
-        flush_interval = 0.5
+        flush_interval = 1.0
 
         while self.is_recording or not self.queue.empty():
             try:
@@ -175,6 +222,9 @@ class AsyncDataRecorder:
 
     def get_status(self):
         return {
+            "state": self.state,
             "queued": self.queued_count,
-            "saved": self.saved_count
+            "saved": self.saved_count,
+            "file_path": self.file_path,
+            "last_error": self.last_error
         }
