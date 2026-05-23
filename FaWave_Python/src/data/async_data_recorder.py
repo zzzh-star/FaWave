@@ -52,12 +52,14 @@ class AsyncDataRecorder:
             self._csv_file = open(self.file_path, mode='w', newline='', encoding='utf-8')
             self._csv_writer = csv.writer(self._csv_file)
             self._csv_writer.writerow(self.csv_headers)
+            self._csv_file.flush()
         elif self.file_format == "XLSX":
             # For XLSX we write to a temporary CSV during acquisition to prevent blocking
             self._tmp_path = self.file_path + ".tmp.csv"
             self._csv_file = open(self._tmp_path, mode='w', newline='', encoding='utf-8')
             self._csv_writer = csv.writer(self._csv_file)
             self._csv_writer.writerow(self.csv_headers)
+            self._csv_file.flush()
 
         self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self._writer_thread.start()
@@ -69,7 +71,8 @@ class AsyncDataRecorder:
         self.is_recording = False
 
         if self._writer_thread and self._writer_thread.is_alive():
-            self._writer_thread.join(timeout=3.0)
+            # Wait for thread to finish writing its queue safely without an arbitrary timeout
+            self._writer_thread.join()
 
         if self._csv_file:
             self._csv_file.flush()
@@ -78,6 +81,7 @@ class AsyncDataRecorder:
             self._csv_writer = None
 
         if self.file_format == "XLSX":
+            # State management updates happen in MainWindow to show "Processing XLSX"
             self._convert_temp_csv_to_xlsx()
 
     def record_point(self, abs_time, rel_time, sample_idx, data_dict, raw_hex="", status="OK", trailer_hex=""):

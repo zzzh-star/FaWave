@@ -476,3 +476,7 @@ QDialog#advancedSettingsDialog QDialogButtonBox QPushButton {
 QWidget#centralWidget {
     background-color: #0F172A;
 }
+PlotWidget {
+    background-color: transparent;
+    border: none;
+}

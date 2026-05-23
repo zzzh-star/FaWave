@@ -150,7 +150,8 @@ class MainWindow(QMainWindow):
         self.logger = logger
         self.current_theme = self.config.get("ui", {}).get("theme", "light")
         self.setWindowTitle("FaWave 多维力感知平台")
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "app_icon.svg")
+        from ..utils.resource import resource_path
+        icon_path = resource_path("assets/app_icon.svg")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
         self.setMinimumSize(1360, 780)
@@ -200,7 +201,8 @@ class MainWindow(QMainWindow):
         header_layout.setContentsMargins(20, 16, 20, 16)
 
         logo_layout = QHBoxLayout()
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "assets", "logo.svg")
+        from ..utils.resource import resource_path
+        logo_path = resource_path("assets/logo.svg")
         if os.path.exists(logo_path):
             self.logo_widget = QSvgWidget(logo_path)
             self.logo_widget.setFixedSize(40, 40)
@@ -647,8 +649,9 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self):
         try:
+            from ..utils.resource import resource_path
             theme_file = 'light.qss' if self.current_theme == 'light' else 'dark.qss'
-            qss_path = os.path.join(os.path.dirname(__file__), 'themes', theme_file)
+            qss_path = resource_path(f"src/ui/themes/{theme_file}")
             with open(qss_path, 'r', encoding='utf-8') as f:
                 stylesheet = f.read()
 
@@ -738,11 +741,20 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "保存错误", f"无法开始记录:\n{e}")
                 self.record_checkbox.setChecked(False)
         else:
+            fmt = self.format_combo.currentText()
+            if fmt == "XLSX" and self.data_recorder.is_recording:
+                # Update status bar immediately before the blocking conversion runs
+                self.statusBar.showMessage("正在生成 XLSX 文件...", 5000)
+                QApplication.processEvents()
+
             self.data_recorder.stop_recording()
+
             self.format_combo.setEnabled(True)
             for btn in self.format_combo._buttons.values(): btn.setEnabled(True)
             self.path_btn.setEnabled(True)
             self.logger.info("保存已停止")
+            if fmt == "XLSX":
+                self.statusBar.showMessage("保存完成", 3000)
 
     def select_save_path(self):
         if self.data_recorder.is_recording:
@@ -833,6 +845,26 @@ class MainWindow(QMainWindow):
         self.sys_values["算法状态"].setText("Python解耦运行中" if self.worker.is_running else "Python解耦")
         self.sys_values["解耦状态"].setText("未初始化")
 
+    def reset_connection_ui_after_failure(self):
+        self.btn_connect.setText("建立连接")
+        self.btn_connect.setObjectName("btnConnect")
+        self.apply_theme()
+
+        self.ip_input.setEnabled(True)
+        self.port_input.setEnabled(True)
+        self.interval_input.setEnabled(True)
+        self.mode_combo.setEnabled(True)
+        self.btn_advanced.setEnabled(True)
+        for btn in self.mode_combo._buttons.values(): btn.setEnabled(True)
+
+        self.status_capsule.setText("● 错误")
+        self.status_capsule.setObjectName("statusCapsule_Error")
+        self.sys_values["连接状态"].setText("错误")
+        self.style().unpolish(self.status_capsule)
+        self.style().polish(self.status_capsule)
+        self.update_status()
+        self.btn_connect.setEnabled(True)
+
     def toggle_connection(self):
         if not self.worker.is_running:
             # Connect
@@ -851,22 +883,20 @@ class MainWindow(QMainWindow):
 
             worker_mode = self.get_worker_mode()
 
+            self.btn_connect.setText("连接中...")
+            self.btn_connect.setEnabled(False)
+
             self.logger.info(f"连接参数: IP={ip}, Port={port}, Mode={worker_mode}")
             self.worker.set_connection_params(worker_mode, ip, port)
             self.worker.start()
 
             self.ui_timer.start(self.refresh_rate_ms)
 
-            self.btn_connect.setText("断开连接")
-            self.btn_connect.setObjectName("btnDisconnect")
-            self.apply_theme() # Refresh styling
-
             self.ip_input.setEnabled(False)
             self.port_input.setEnabled(False)
             self.interval_input.setEnabled(False)
             self.mode_combo.setEnabled(False)
             self.btn_advanced.setEnabled(False)
-            # Need to disable buttons inside the segmented control manually if disabling widget isn't styled properly
             for btn in self.mode_combo._buttons.values(): btn.setEnabled(False)
 
         else:
@@ -883,6 +913,7 @@ class MainWindow(QMainWindow):
 
             self.btn_connect.setText("建立连接")
             self.btn_connect.setObjectName("btnConnect")
+            self.btn_connect.setEnabled(True)
             self.apply_theme()
 
             self.ip_input.setEnabled(True)
@@ -900,19 +931,26 @@ class MainWindow(QMainWindow):
             self.status_capsule.setText(disp_text)
             self.status_capsule.setObjectName("statusCapsule_Connected")
             self.sys_values["连接状态"].setText(disp_text.replace("● ", ""))
+
+            self.btn_connect.setText("断开连接")
+            self.btn_connect.setObjectName("btnDisconnect")
+            self.btn_connect.setEnabled(True)
+            self.apply_theme() # Refresh styling
+
             if not is_simulation:
                 QTimer.singleShot(100, lambda: self.statusBar.showMessage("请保持传感器无载静止约 5 秒，用于自动建立三维力基线。", 5000))
         elif status == "Disconnected":
             self.status_capsule.setText("● 未连接")
             self.status_capsule.setObjectName("statusCapsule_Disconnected")
             self.sys_values["连接状态"].setText("未连接")
-        else:
-            self.status_capsule.setText("● 错误")
-            self.status_capsule.setObjectName("statusCapsule_Error")
-            self.sys_values["连接状态"].setText("错误")
 
-            if self.worker.is_running:
-                 self.toggle_connection()
+            self.btn_connect.setText("建立连接")
+            self.btn_connect.setObjectName("btnConnect")
+            self.btn_connect.setEnabled(True)
+            self.apply_theme()
+        else:
+            self.reset_connection_ui_after_failure()
+            return
 
         self.style().unpolish(self.status_capsule)
         self.style().polish(self.status_capsule)

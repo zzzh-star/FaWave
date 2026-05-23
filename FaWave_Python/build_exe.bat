@@ -2,6 +2,7 @@
 echo Building FaWave...
 pyinstaller --noconfirm --clean --windowed ^
   --name FaWave ^
+  --icon "assets/app_icon.ico" ^
   --add-data "assets;assets" ^
   --add-data "config;config" ^
   --add-data "src/ui/themes;src/ui/themes" ^

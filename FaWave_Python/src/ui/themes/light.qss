@@ -455,3 +455,7 @@ QDialog#advancedSettingsDialog QPushButton#btnCheckC:hover {
 QWidget#centralWidget {
     background-color: #F4F7FB;
 }
+PlotWidget {
+    background-color: transparent;
+    border: none;
+}
