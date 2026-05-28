@@ -87,22 +87,30 @@ class ModelLoader:
             scene = trimesh.Scene(scene_or_mesh)
 
         parts: list[MeshPart] = []
-        for node_name, geom_name in scene.graph.nodes_geometry:
+        for node_name in scene.graph.nodes_geometry:
+            try:
+                transform, geom_name = scene.graph.get(node_name)
+            except Exception:  # noqa: BLE001
+                continue
+
             geom = scene.geometry.get(geom_name)
             if geom is None or not hasattr(geom, "faces"):
                 continue
-            mesh = geom.copy()
-            transform, _ = scene.graph.get(node_name)
-            mesh.apply_transform(transform)
-            color = self._extract_color(mesh)
-            parts.append(
-                MeshPart(
-                    vertices=np.asarray(mesh.vertices, dtype=float),
-                    faces=np.asarray(mesh.faces, dtype=np.int32),
-                    color=color,
-                    name=f"{node_name}:{geom_name}",
+
+            try:
+                mesh_obj = geom.copy()
+                mesh_obj.apply_transform(transform)
+                color = self._extract_color(mesh_obj)
+                parts.append(
+                    MeshPart(
+                        vertices=np.asarray(mesh_obj.vertices, dtype=float),
+                        faces=np.asarray(mesh_obj.faces, dtype=np.int32),
+                        color=color,
+                        name=f"{node_name}:{geom_name}",
+                    )
                 )
-            )
+            except Exception:
+                continue
         return parts
 
     def _load_obj(self, path: Path, logs: list[str]) -> list[MeshPart]:

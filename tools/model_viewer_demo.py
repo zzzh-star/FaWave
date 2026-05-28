@@ -17,10 +17,10 @@ from src.ui.widgets.model_viewer import ModelViewer  # noqa: E402
 class DemoWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Model Viewer Demo")
+        self.setWindowTitle("三维模型显示模块测试")
         self.resize(1100, 700)
 
-        self.viewer = ModelViewer(model_root="assets/models")
+        self.viewer = ModelViewer(model_root=str(REPO_ROOT / "assets" / "models"))
         self.status = QLabel()
 
         root = QVBoxLayout(self)
@@ -30,10 +30,10 @@ class DemoWindow(QWidget):
         bar = QHBoxLayout()
         root.addLayout(bar)
 
-        btn_dark = QPushButton("Dark Theme")
-        btn_light = QPushButton("Light Theme")
-        btn_reload = QPushButton("Reload Model")
-        btn_force = QPushButton("Simulate Fx/Fy/Fz")
+        btn_dark = QPushButton("深色主题")
+        btn_light = QPushButton("浅色主题")
+        btn_reload = QPushButton("重新加载模型")
+        btn_force = QPushButton("模拟三维力")
 
         bar.addWidget(btn_dark)
         bar.addWidget(btn_light)
@@ -65,7 +65,7 @@ class DemoWindow(QWidget):
     def _refresh_status(self, extra: str = ""):
         s = self.viewer.get_status()
         self.status.setText(
-            f"loaded={s['loaded']} type={s['model_type']} parts={s['part_count']} path={s['model_path']} msg={s['message']}{extra}"
+            f"加载状态={s['loaded']} | 模型类型={s['model_type']} | 零件数量={s['part_count']} | 回退模式={s['fallback']} | 模型路径={s['model_path']} | 提示={s['message']}{extra}"
         )
 
 
