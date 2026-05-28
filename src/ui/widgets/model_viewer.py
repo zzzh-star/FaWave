@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent, QVector3D, QWheelEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from .model_loader import MeshPart, ModelLoader
@@ -27,14 +27,89 @@ THEMES = {
 }
 
 
+class ModelGLViewWidget(gl.GLViewWidget):
+    """GLView with zoom-to-cursor approximation + pan + reset."""
+
+    def __init__(self):
+        super().__init__()
+        self.min_distance = 0.6
+        self.max_distance = 30.0
+
+    def wheelEvent(self, ev: QWheelEvent):
+        delta = ev.angleDelta().y()
+        if delta == 0:
+            return
+
+        steps = delta / 120.0
+        zoom_scale = 0.88 ** steps  # up => smaller distance => zoom in
+
+        old_distance = float(self.opts.get("distance", 4.0))
+        new_distance = float(np.clip(old_distance * zoom_scale, self.min_distance, self.max_distance))
+
+        # zoom-to-cursor approximation: shift center toward cursor before distance update
+        pos = ev.position()
+        w = max(1.0, float(self.width()))
+        h = max(1.0, float(self.height()))
+        nx = (pos.x() / w - 0.5) * 2.0
+        ny = (0.5 - pos.y() / h) * 2.0
+
+        distance_ratio = (old_distance - new_distance) / max(old_distance, 1e-6)
+        side, up, _ = self.cameraPosition() - self.opts["center"], np.array([0.0, 0.0, 1.0]), None
+        side_len = np.linalg.norm([side.x(), side.y(), 0.0])
+        pan_scale = old_distance * 0.12 * distance_ratio
+        if side_len > 1e-6:
+            right = np.array([-side.y(), side.x(), 0.0]) / side_len
+        else:
+            right = np.array([1.0, 0.0, 0.0])
+        up_vec = np.array([0.0, 0.0, 1.0])
+        center = self.opts["center"]
+        center.setX(center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]))
+        center.setY(center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]))
+        center.setZ(center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]))
+
+        self.opts["distance"] = new_distance
+        self.update()
+        ev.accept()
+
+    def mouseMoveEvent(self, ev: QMouseEvent):
+        if not hasattr(self, "mousePos"):
+            self.mousePos = ev.position()
+            return
+        diff = ev.position() - self.mousePos
+        self.mousePos = ev.position()
+
+        left_drag = bool(ev.buttons() & Qt.LeftButton)
+        mid_drag = bool(ev.buttons() & Qt.MiddleButton)
+        right_drag = bool(ev.buttons() & Qt.RightButton)
+        shift = bool(ev.modifiers() & Qt.ShiftModifier)
+
+        if mid_drag or right_drag or (left_drag and shift):
+            self.pan(diff.x(), diff.y(), 0, relative="view")
+            self.update()
+            ev.accept()
+            return
+
+        super().mouseMoveEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev: QMouseEvent):
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "reset_view"):
+            parent.reset_view()
+            ev.accept()
+            return
+        super().mouseDoubleClickEvent(ev)
+
+
 class ModelViewer(QWidget):
     def __init__(self, model_root: str | None = None, parent=None):
         super().__init__(parent)
         self.loader = ModelLoader(model_root=model_root)
         self._status = {"loaded": False, "model_type": "fallback", "model_path": "", "part_count": 0, "fallback": True, "message": "初始化"}
         self._mesh_items = []
+        self._base_parts: list[MeshPart] = []
         self._force_items = {}
         self._theme = "dark"
+        self._model_rotation = np.eye(3)
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -46,7 +121,7 @@ class ModelViewer(QWidget):
             self.layout.addWidget(self._hint)
             self._status["message"] = self._hint.text()
         else:
-            self._view = gl.GLViewWidget()
+            self._view = ModelGLViewWidget()
             self.layout.addWidget(self._view)
             self._hint = QLabel("")
             self._hint.setAlignment(Qt.AlignCenter)
@@ -67,19 +142,21 @@ class ModelViewer(QWidget):
             print(f"[ModelViewer] {line}")
 
         self._clear_meshes()
+        self._model_rotation = np.eye(3)
         if result.success:
-            normalized = self._normalize_parts(result.parts)
-            self._add_parts(normalized)
+            self._base_parts = self._normalize_parts(result.parts)
+            self._redraw_model_parts()
             self._status = {
                 "loaded": True,
                 "model_type": result.model_type,
                 "model_path": result.model_path,
-                "part_count": len(normalized),
+                "part_count": len(self._base_parts),
                 "fallback": False,
                 "message": "彩色装配体模型加载成功" if result.model_type in {"glb", "gltf", "obj"} else "STL 几何模型加载成功",
             }
             self._hint.setText("")
         else:
+            self._base_parts = []
             self._add_fallback_cube()
             self._status = {
                 "loaded": False,
@@ -90,6 +167,7 @@ class ModelViewer(QWidget):
                 "message": result.message,
             }
             self._hint.setText(result.message)
+        self.reset_view()
 
     def reload_model(self):
         self.load_best_available_model()
@@ -111,6 +189,65 @@ class ModelViewer(QWidget):
     def get_status(self) -> dict:
         return dict(self._status)
 
+    def reset_view(self):
+        if self._view is None:
+            return
+        self._view.opts["center"] = QVector3D(0.0, 0.0, 0.0)
+        self._view.opts["distance"] = 4.0
+        self._view.opts["elevation"] = 22.0
+        self._view.opts["azimuth"] = 35.0
+        self._view.update()
+
+    def set_view_front(self):
+        self._set_camera(azimuth=0, elevation=0)
+
+    def set_view_back(self):
+        self._set_camera(azimuth=180, elevation=0)
+
+    def set_view_left(self):
+        self._set_camera(azimuth=-90, elevation=0)
+
+    def set_view_right(self):
+        self._set_camera(azimuth=90, elevation=0)
+
+    def set_view_top(self):
+        self._set_camera(azimuth=0, elevation=90)
+
+    def set_view_bottom(self):
+        self._set_camera(azimuth=0, elevation=-90)
+
+    def set_model_side_lay(self):
+        self.rotate_model("x", 90.0)
+
+    def restore_model_upright(self):
+        self._model_rotation = np.eye(3)
+        self._redraw_model_parts()
+
+    def roll_view(self, angle_deg: float):
+        # Model-space roll fallback (display transform only)
+        self.rotate_model("z", angle_deg)
+
+    def rotate_model(self, axis: str, angle_deg: float):
+        if not self._base_parts:
+            return
+        rad = np.deg2rad(angle_deg)
+        c, s = np.cos(rad), np.sin(rad)
+        if axis == "x":
+            r = np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=float)
+        elif axis == "y":
+            r = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=float)
+        else:
+            r = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=float)
+        self._model_rotation = r @ self._model_rotation
+        self._redraw_model_parts()
+
+    def _set_camera(self, azimuth: float, elevation: float):
+        if self._view is None:
+            return
+        self._view.opts["azimuth"] = azimuth
+        self._view.opts["elevation"] = elevation
+        self._view.update()
+
     def _setup_force_items(self):
         for key in ("fx", "fy", "fz"):
             item = gl.GLLinePlotItem(pos=np.zeros((2, 3)), width=2, antialias=True)
@@ -128,11 +265,23 @@ class ModelViewer(QWidget):
         self._force_items[key].setData(pos=np.vstack([[0, 0, 0], end]), color=color)
 
     def _clear_meshes(self):
+        if self._view is None:
+            return
         for item in self._mesh_items:
             self._view.removeItem(item)
         self._mesh_items.clear()
 
+    def _redraw_model_parts(self):
+        self._clear_meshes()
+        rotated = []
+        for p in self._base_parts:
+            v = p.vertices @ self._model_rotation.T
+            rotated.append(MeshPart(vertices=v, faces=p.faces, color=p.color, name=p.name))
+        self._add_parts(rotated)
+
     def _add_parts(self, parts: list[MeshPart]):
+        if self._view is None:
+            return
         for part in parts:
             md = gl.MeshData(vertexes=part.vertices, faces=part.faces)
             item = gl.GLMeshItem(meshdata=md, smooth=False, shader="shaded", drawEdges=False, color=part.color)
@@ -145,15 +294,7 @@ class ModelViewer(QWidget):
         center = (min_v + max_v) / 2.0
         extent = np.max(max_v - min_v)
         scale = 1.0 if extent < 1e-6 else 1.6 / extent
-        normalized = []
-        for p in parts:
-            v = (p.vertices - center) * scale
-            normalized.append(MeshPart(vertices=v, faces=p.faces, color=p.color, name=p.name))
-        if self._view is not None:
-            self._view.opts["distance"] = 4.0
-            self._view.opts["elevation"] = 20
-            self._view.opts["azimuth"] = 35
-        return normalized
+        return [MeshPart(vertices=(p.vertices - center) * scale, faces=p.faces, color=p.color, name=p.name) for p in parts]
 
     def _add_fallback_cube(self):
         vertices = np.array([
