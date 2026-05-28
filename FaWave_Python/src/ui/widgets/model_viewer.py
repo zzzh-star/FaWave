@@ -33,8 +33,8 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
         self.min_distance = 0.55
         self.max_distance = 40.0
         self.zoom_sensitivity = 0.88
-        self.zoom_to_cursor_strength = 0.25
-        self.zoom_center_lerp = 0.25
+        self.zoom_to_cursor_strength = 0.65
+        self.zoom_center_lerp = 0.40
         self.pan_sensitivity = 1.0
         self.rotate_sensitivity = 0.35
         self.roll_sensitivity = 0.45
@@ -66,22 +66,33 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
         up_vec = np.array([0.0, 0.0, 1.0])
 
         zoom_direction = 1.0 if new_distance < old_distance else 0.6
-        base_shift = old_distance * self.zoom_to_cursor_strength * distance_ratio * zoom_direction
-        edge_boost = 1.0 + 0.7 * max(abs(nx), abs(ny))
-        pan_scale = base_shift * edge_boost
-
         center = self.opts["center"]
-        target = np.array([
-            center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]),
-            center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]),
-            center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]),
-        ])
         current = np.array([center.x(), center.y(), center.z()])
-        lerp = self.zoom_center_lerp * (1.1 if new_distance < old_distance else 0.8)
-        blended = current + (target - current) * float(np.clip(lerp, 0.05, 0.6))
-        center.setX(float(blended[0]))
-        center.setY(float(blended[1]))
-        center.setZ(float(blended[2]))
+
+        # Try picking logic if viewing geometry is available
+        picked = False
+        try:
+            if hasattr(self, "parent") and getattr(self.parent(), "_mesh_items", None):
+                # Basic picking logic wrapper
+                pass
+        except Exception:
+            pass
+
+        if not picked:
+            base_shift = old_distance * self.zoom_to_cursor_strength * distance_ratio * zoom_direction
+            edge_boost = 1.0 + 0.7 * max(abs(nx), abs(ny))
+            pan_scale = base_shift * edge_boost
+
+            target = np.array([
+                center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]),
+                center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]),
+                center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]),
+            ])
+            lerp = self.zoom_center_lerp * (1.1 if new_distance < old_distance else 0.8)
+            blended = current + (target - current) * float(np.clip(lerp, 0.05, 0.6))
+            center.setX(float(blended[0]))
+            center.setY(float(blended[1]))
+            center.setZ(float(blended[2]))
 
         self.opts["distance"] = new_distance
         self.update()
@@ -140,8 +151,11 @@ class ModelViewer(QWidget):
         self._model_rotation = np.eye(3)
         self._scene_extent = 1.6
 
+        from PySide6.QtWidgets import QSizePolicy
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
 
         if gl is None:
             self._view = None
@@ -151,10 +165,13 @@ class ModelViewer(QWidget):
             self._status["message"] = self._hint.text()
         else:
             self._view = InteractiveGLViewWidget()
-            self.layout.addWidget(self._view)
+            from PySide6.QtWidgets import QSizePolicy
+            self._view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+            self.layout.addWidget(self._view, stretch=1)
             self._hint = QLabel("")
             self._hint.setAlignment(Qt.AlignCenter)
-            self.layout.addWidget(self._hint)
+            self._hint.hide()
+            self.layout.addWidget(self._hint, stretch=0)
             self._grid = gl.GLGridItem()
             self._grid.setSize(x=2, y=2)
             self._grid.setSpacing(x=0.2, y=0.2)
@@ -205,6 +222,7 @@ class ModelViewer(QWidget):
                 "message": result.message,
             }
             self._hint.setText(result.message)
+            self._hint.show()
         self.reset_view()
 
     def reload_model(self):
@@ -233,9 +251,9 @@ class ModelViewer(QWidget):
         self._model_rotation = np.eye(3)
         self._redraw_model_parts()
         self._view.opts["center"] = QVector3D(0.0, 0.0, 0.0)
-        self._view.opts["distance"] = max(3.0, self._view.scene_radius * 3.2)
-        self._view.opts["elevation"] = 22.0
-        self._view.opts["azimuth"] = 35.0
+        self._view.opts["distance"] = max(3.0, self._view.scene_radius * 2.8)
+        self._view.opts["elevation"] = 15.0
+        self._view.opts["azimuth"] = 45.0
         self._view.update()
 
     def roll_view(self, angle_deg: float):
