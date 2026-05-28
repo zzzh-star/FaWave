@@ -23,9 +23,14 @@ class DemoWindow(QWidget):
         model_root = REPO_ROOT / "assets" / "models"
         self.viewer = ModelViewer(model_root=str(model_root))
         self.status = QLabel()
+        self.help_label = QLabel(
+            "鼠标操作说明：滚轮=按鼠标位置缩放；按住滚轮拖动=旋转；Shift/Ctrl+滚轮拖动=侧滚/侧躺；右键拖动=平移；左键双击=重置视角"
+        )
+        self.help_label.setWordWrap(True)
 
         root = QVBoxLayout(self)
         root.addWidget(self.viewer, 1)
+        root.addWidget(self.help_label)
         root.addWidget(self.status)
 
         grid = QGridLayout()
@@ -36,21 +41,11 @@ class DemoWindow(QWidget):
             ("浅色主题", lambda: self._set_theme("light")),
             ("重新加载模型", self._reload),
             ("模拟三维力", self._simulate_force),
-            ("重置视角", self._reset_view),
-            ("前视图", self._front),
-            ("后视图", self._back),
-            ("左视图", self._left),
-            ("右视图", self._right),
-            ("顶视图", self._top),
-            ("底视图", self._bottom),
-            ("模型侧躺", self._side_lay),
-            ("恢复正放", self._upright),
         ]
-
         for idx, (text, slot) in enumerate(buttons):
             btn = QPushButton(text)
             btn.clicked.connect(slot)
-            grid.addWidget(btn, idx // 5, idx % 5)
+            grid.addWidget(btn, 0, idx)
 
         self._refresh_status()
 
@@ -74,34 +69,6 @@ class DemoWindow(QWidget):
         fz = random.uniform(-120, 120)
         self.viewer.update_force_vectors(fx, fy, fz)
         self._refresh_status(extra=f" | Fx={fx:.1f}, Fy={fy:.1f}, Fz={fz:.1f}")
-
-    def _reset_view(self):
-        self.viewer.reset_view()
-        self._refresh_status()
-
-    def _front(self):
-        self.viewer.set_view_front(); self._refresh_status()
-
-    def _back(self):
-        self.viewer.set_view_back(); self._refresh_status()
-
-    def _left(self):
-        self.viewer.set_view_left(); self._refresh_status()
-
-    def _right(self):
-        self.viewer.set_view_right(); self._refresh_status()
-
-    def _top(self):
-        self.viewer.set_view_top(); self._refresh_status()
-
-    def _bottom(self):
-        self.viewer.set_view_bottom(); self._refresh_status()
-
-    def _side_lay(self):
-        self.viewer.set_model_side_lay(); self._refresh_status()
-
-    def _upright(self):
-        self.viewer.restore_model_upright(); self._refresh_status()
 
 
 if __name__ == "__main__":

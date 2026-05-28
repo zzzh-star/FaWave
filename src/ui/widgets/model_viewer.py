@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QMouseEvent, QVector3D, QWheelEvent
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -27,26 +27,25 @@ THEMES = {
 }
 
 
-class ModelGLViewWidget(gl.GLViewWidget):
-    """GLView with zoom-to-cursor approximation + pan + reset."""
-
+class InteractiveGLViewWidget(gl.GLViewWidget):
     def __init__(self):
         super().__init__()
-        self.min_distance = 0.6
-        self.max_distance = 30.0
+        self.min_distance = 0.55
+        self.max_distance = 40.0
+        self.zoom_sensitivity = 0.88
+        self.zoom_to_cursor_strength = 0.16
+        self.rotate_sensitivity = 0.35
+        self.roll_sensitivity = 0.45
+        self._last_pos = QPointF()
 
     def wheelEvent(self, ev: QWheelEvent):
         delta = ev.angleDelta().y()
         if delta == 0:
             return
-
         steps = delta / 120.0
-        zoom_scale = 0.88 ** steps  # up => smaller distance => zoom in
-
         old_distance = float(self.opts.get("distance", 4.0))
-        new_distance = float(np.clip(old_distance * zoom_scale, self.min_distance, self.max_distance))
+        new_distance = float(np.clip(old_distance * (self.zoom_sensitivity**steps), self.min_distance, self.max_distance))
 
-        # zoom-to-cursor approximation: shift center toward cursor before distance update
         pos = ev.position()
         w = max(1.0, float(self.width()))
         h = max(1.0, float(self.height()))
@@ -54,14 +53,16 @@ class ModelGLViewWidget(gl.GLViewWidget):
         ny = (0.5 - pos.y() / h) * 2.0
 
         distance_ratio = (old_distance - new_distance) / max(old_distance, 1e-6)
-        side, up, _ = self.cameraPosition() - self.opts["center"], np.array([0.0, 0.0, 1.0]), None
-        side_len = np.linalg.norm([side.x(), side.y(), 0.0])
-        pan_scale = old_distance * 0.12 * distance_ratio
+        camera_offset = self.cameraPosition() - self.opts["center"]
+        side_len = np.linalg.norm([camera_offset.x(), camera_offset.y(), 0.0])
+        right = np.array([-camera_offset.y(), camera_offset.x(), 0.0], dtype=float)
         if side_len > 1e-6:
-            right = np.array([-side.y(), side.x(), 0.0]) / side_len
+            right /= side_len
         else:
             right = np.array([1.0, 0.0, 0.0])
         up_vec = np.array([0.0, 0.0, 1.0])
+
+        pan_scale = old_distance * self.zoom_to_cursor_strength * distance_ratio
         center = self.opts["center"]
         center.setX(center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]))
         center.setY(center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]))
@@ -71,19 +72,30 @@ class ModelGLViewWidget(gl.GLViewWidget):
         self.update()
         ev.accept()
 
+    def mousePressEvent(self, ev: QMouseEvent):
+        self._last_pos = ev.position()
+        super().mousePressEvent(ev)
+
     def mouseMoveEvent(self, ev: QMouseEvent):
-        if not hasattr(self, "mousePos"):
-            self.mousePos = ev.position()
-            return
-        diff = ev.position() - self.mousePos
-        self.mousePos = ev.position()
-
-        left_drag = bool(ev.buttons() & Qt.LeftButton)
-        mid_drag = bool(ev.buttons() & Qt.MiddleButton)
-        right_drag = bool(ev.buttons() & Qt.RightButton)
+        diff = ev.position() - self._last_pos
+        self._last_pos = ev.position()
+        mid = bool(ev.buttons() & Qt.MiddleButton)
+        right = bool(ev.buttons() & Qt.RightButton)
         shift = bool(ev.modifiers() & Qt.ShiftModifier)
+        ctrl = bool(ev.modifiers() & Qt.ControlModifier)
 
-        if mid_drag or right_drag or (left_drag and shift):
+        if mid:
+            viewer = self.parent()
+            if viewer is not None and hasattr(viewer, "rotate_model"):
+                if shift or ctrl:
+                    viewer.roll_view(diff.x() * self.roll_sensitivity)
+                else:
+                    viewer.rotate_model("y", -diff.x() * self.rotate_sensitivity)
+                    viewer.rotate_model("x", -diff.y() * self.rotate_sensitivity)
+                ev.accept()
+                return
+
+        if right:
             self.pan(diff.x(), diff.y(), 0, relative="view")
             self.update()
             ev.accept()
@@ -92,11 +104,12 @@ class ModelGLViewWidget(gl.GLViewWidget):
         super().mouseMoveEvent(ev)
 
     def mouseDoubleClickEvent(self, ev: QMouseEvent):
-        parent = self.parent()
-        if parent is not None and hasattr(parent, "reset_view"):
-            parent.reset_view()
-            ev.accept()
-            return
+        if ev.button() == Qt.LeftButton:
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "reset_view"):
+                parent.reset_view()
+                ev.accept()
+                return
         super().mouseDoubleClickEvent(ev)
 
 
@@ -121,7 +134,7 @@ class ModelViewer(QWidget):
             self.layout.addWidget(self._hint)
             self._status["message"] = self._hint.text()
         else:
-            self._view = ModelGLViewWidget()
+            self._view = InteractiveGLViewWidget()
             self.layout.addWidget(self._view)
             self._hint = QLabel("")
             self._hint.setAlignment(Qt.AlignCenter)
@@ -192,39 +205,15 @@ class ModelViewer(QWidget):
     def reset_view(self):
         if self._view is None:
             return
+        self._model_rotation = np.eye(3)
+        self._redraw_model_parts()
         self._view.opts["center"] = QVector3D(0.0, 0.0, 0.0)
         self._view.opts["distance"] = 4.0
         self._view.opts["elevation"] = 22.0
         self._view.opts["azimuth"] = 35.0
         self._view.update()
 
-    def set_view_front(self):
-        self._set_camera(azimuth=0, elevation=0)
-
-    def set_view_back(self):
-        self._set_camera(azimuth=180, elevation=0)
-
-    def set_view_left(self):
-        self._set_camera(azimuth=-90, elevation=0)
-
-    def set_view_right(self):
-        self._set_camera(azimuth=90, elevation=0)
-
-    def set_view_top(self):
-        self._set_camera(azimuth=0, elevation=90)
-
-    def set_view_bottom(self):
-        self._set_camera(azimuth=0, elevation=-90)
-
-    def set_model_side_lay(self):
-        self.rotate_model("x", 90.0)
-
-    def restore_model_upright(self):
-        self._model_rotation = np.eye(3)
-        self._redraw_model_parts()
-
     def roll_view(self, angle_deg: float):
-        # Model-space roll fallback (display transform only)
         self.rotate_model("z", angle_deg)
 
     def rotate_model(self, axis: str, angle_deg: float):
@@ -240,13 +229,6 @@ class ModelViewer(QWidget):
             r = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=float)
         self._model_rotation = r @ self._model_rotation
         self._redraw_model_parts()
-
-    def _set_camera(self, azimuth: float, elevation: float):
-        if self._view is None:
-            return
-        self._view.opts["azimuth"] = azimuth
-        self._view.opts["elevation"] = elevation
-        self._view.update()
 
     def _setup_force_items(self):
         for key in ("fx", "fy", "fz"):
