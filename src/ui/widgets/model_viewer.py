@@ -33,9 +33,12 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
         self.min_distance = 0.55
         self.max_distance = 40.0
         self.zoom_sensitivity = 0.88
-        self.zoom_to_cursor_strength = 0.16
+        self.zoom_to_cursor_strength = 0.25
+        self.zoom_center_lerp = 0.25
+        self.pan_sensitivity = 1.0
         self.rotate_sensitivity = 0.35
         self.roll_sensitivity = 0.45
+        self.scene_radius = 1.0
         self._last_pos = QPointF()
 
     def wheelEvent(self, ev: QWheelEvent):
@@ -62,11 +65,23 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
             right = np.array([1.0, 0.0, 0.0])
         up_vec = np.array([0.0, 0.0, 1.0])
 
-        pan_scale = old_distance * self.zoom_to_cursor_strength * distance_ratio
+        zoom_direction = 1.0 if new_distance < old_distance else 0.6
+        base_shift = old_distance * self.zoom_to_cursor_strength * distance_ratio * zoom_direction
+        edge_boost = 1.0 + 0.7 * max(abs(nx), abs(ny))
+        pan_scale = base_shift * edge_boost
+
         center = self.opts["center"]
-        center.setX(center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]))
-        center.setY(center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]))
-        center.setZ(center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]))
+        target = np.array([
+            center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]),
+            center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]),
+            center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]),
+        ])
+        current = np.array([center.x(), center.y(), center.z()])
+        lerp = self.zoom_center_lerp * (1.1 if new_distance < old_distance else 0.8)
+        blended = current + (target - current) * float(np.clip(lerp, 0.05, 0.6))
+        center.setX(float(blended[0]))
+        center.setY(float(blended[1]))
+        center.setZ(float(blended[2]))
 
         self.opts["distance"] = new_distance
         self.update()
@@ -96,7 +111,7 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
                 return
 
         if right:
-            self.pan(diff.x(), diff.y(), 0, relative="view")
+            self.pan(diff.x() * self.pan_sensitivity, diff.y() * self.pan_sensitivity, 0, relative="view")
             self.update()
             ev.accept()
             return
@@ -123,6 +138,7 @@ class ModelViewer(QWidget):
         self._force_items = {}
         self._theme = "dark"
         self._model_rotation = np.eye(3)
+        self._scene_extent = 1.6
 
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -158,6 +174,7 @@ class ModelViewer(QWidget):
         self._model_rotation = np.eye(3)
         if result.success:
             self._base_parts = self._normalize_parts(result.parts)
+            self._view.scene_radius = max(0.8, float(self._scene_extent) * 0.5)
             self._redraw_model_parts()
             self._status = {
                 "loaded": True,
@@ -208,7 +225,7 @@ class ModelViewer(QWidget):
         self._model_rotation = np.eye(3)
         self._redraw_model_parts()
         self._view.opts["center"] = QVector3D(0.0, 0.0, 0.0)
-        self._view.opts["distance"] = 4.0
+        self._view.opts["distance"] = max(3.0, self._view.scene_radius * 3.2)
         self._view.opts["elevation"] = 22.0
         self._view.opts["azimuth"] = 35.0
         self._view.update()
@@ -274,7 +291,9 @@ class ModelViewer(QWidget):
         all_vertices = np.vstack([p.vertices for p in parts])
         min_v, max_v = all_vertices.min(axis=0), all_vertices.max(axis=0)
         center = (min_v + max_v) / 2.0
-        extent = np.max(max_v - min_v)
+        extent_vec = max_v - min_v
+        extent = float(np.max(extent_vec))
+        self._scene_extent = max(1e-6, extent)
         scale = 1.0 if extent < 1e-6 else 1.6 / extent
         return [MeshPart(vertices=(p.vertices - center) * scale, faces=p.faces, color=p.color, name=p.name) for p in parts]
 

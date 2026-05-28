@@ -24,7 +24,13 @@ class DemoWindow(QWidget):
         self.viewer = ModelViewer(model_root=str(model_root))
         self.status = QLabel()
         self.help_label = QLabel(
-            "鼠标操作说明：滚轮=按鼠标位置缩放；按住滚轮拖动=旋转；Shift/Ctrl+滚轮拖动=侧滚/侧躺；右键拖动=平移；左键双击=重置视角"
+            """鼠标操作：
+滚轮：按鼠标所在位置缩放，并将该位置逐渐移动到中心；
+按住滚轮拖动：旋转模型；
+Shift/Ctrl + 按住滚轮拖动：侧滚/侧躺；
+右键拖动：平移模型；
+左键双击：重置视角；
+适合细长夹钳模型局部观察（如放大夹钳顶端）。"""
         )
         self.help_label.setWordWrap(True)
 
