@@ -57,16 +57,16 @@ class SafetyMonitor:
     def reset_alarms(self):
         if self.mode == "牵拉模式":
             self.alarms = [
-                {"event": "组织滑脱", "level": "未触发", "reason": "Fz 100ms内突降>50%", "val": "", "ts": 0},
-                {"event": "组织撕裂", "level": "未触发", "reason": "Fz 50ms内突降>40%", "val": "", "ts": 0},
-                {"event": "牵拉过载", "level": "未触发", "reason": "Fz > 阈值，持续>300ms", "val": "", "ts": 0}
+                {"event": "组织滑脱", "level": "未触发", "reason": "依据：Fz 在 100 ms 内突降 > 50%", "val": "", "ts": 0},
+                {"event": "组织撕裂", "level": "未触发", "reason": "依据：Fz 超阈值后快速下降", "val": "", "ts": 0},
+                {"event": "牵拉过载", "level": "未触发", "reason": "依据：Fz > 5 N 且持续 > 300 ms", "val": "", "ts": 0}
             ]
         else:
             self.alarms = [
-                {"event": "缝合针脱出", "level": "未触发", "reason": "未完成穿刺前F同步骤降>90%", "val": "", "ts": 0},
-                {"event": "穿刺力过大", "level": "未触发", "reason": "Fz > 阈值，持续>100ms", "val": "", "ts": 0},
-                {"event": "组织撕裂", "level": "未触发", "reason": "穿行期骤降并伴随侧向大幅波动", "val": "", "ts": 0},
-                {"event": "拉线过紧", "level": "未触发", "reason": "Fz > 阈值，持续>1s", "val": "", "ts": 0}
+                {"event": "缝合针脱出", "level": "未触发", "reason": "依据：Fx/Fy/Fz 同步降低 > 90%", "val": "", "ts": 0},
+                {"event": "穿刺力过大", "level": "未触发", "reason": "依据：Fz > 8 N 且持续 > 100 ms", "val": "", "ts": 0},
+                {"event": "组织撕裂", "level": "未触发", "reason": "依据：Fz 骤降且侧向力大幅波动", "val": "", "ts": 0},
+                {"event": "拉线过紧", "level": "未触发", "reason": "依据：Fz > 4 N 且持续 > 1 s", "val": "", "ts": 0}
             ]
 
     def update(self, fx, fy, fz, timestamp_ms, decoder_status):

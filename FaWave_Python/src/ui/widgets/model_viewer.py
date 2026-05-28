@@ -43,7 +43,7 @@ class ModelViewer(QWidget):
             self.gl_widget.deleteLater()
             self.gl_widget = None
 
-        lbl = QLabel(f"[3D 装置占位图]\n无法加载 OpenGL\n{msg}")
+        lbl = QLabel(f"当前环境不支持 OpenGL，已切换为简化视图\n{msg}")
         lbl.setAlignment(Qt.AlignCenter)
         lbl.setStyleSheet("color: #94A3B8; background: transparent; border: 1px dashed #475569; border-radius: 4px;")
         self.layout.addWidget(lbl)
@@ -72,9 +72,17 @@ class ModelViewer(QWidget):
     def load_stl_model(self):
         model_path = resource_path("assets/models/device_model.stl")
 
+        import logging
+        logger = logging.getLogger("ModelViewer")
+
         if not HAS_STL or not os.path.exists(model_path):
-            self._load_fallback_geometry()
+            logger.warning(f"未找到 3D 模型文件或缺少依赖: {model_path}")
+            self._load_fallback_geometry(f"未找到 3D 模型文件：
+assets/models/device_model.stl
+已切换为简化模型")
             return
+
+        logger.info(f"正在加载 3D 模型：{model_path}")
 
         try:
             stl_mesh = stl.mesh.Mesh.from_file(model_path)
@@ -101,12 +109,19 @@ class ModelViewer(QWidget):
             meshdata = gl.MeshData(vertexes=vertices, faces=faces)
             self.mesh_item = gl.GLMeshItem(meshdata=meshdata, smooth=True, drawEdges=False, shader='shaded', computeNormals=True)
             self.gl_widget.addItem(self.mesh_item)
+            logger.info("3D 模型加载成功")
 
         except Exception as e:
-            print(f"Failed to load STL: {e}")
-            self._load_fallback_geometry()
+            logger.error(f"3D 模型解析失败: {e}")
+            self._load_fallback_geometry("3D 模型解析失败，请检查 STL 文件格式")
 
-    def _load_fallback_geometry(self):
+    def _load_fallback_geometry(self, msg="已切换为简化视图"):
+        if hasattr(self, 'layout'):
+            lbl = QLabel(msg)
+            lbl.setAlignment(Qt.AlignCenter)
+            lbl.setStyleSheet("color: #94A3B8; background: transparent; border: 1px dashed #475569; border-radius: 4px; padding: 10px;")
+            self.layout.addWidget(lbl)
+
         # Base Cylinder/Box
         self.base_item = gl.GLBoxItem(size=pg.Vector(4, 4, 1), color=(51, 65, 85, 200))
         self.base_item.translate(-2, -2, -0.5)
