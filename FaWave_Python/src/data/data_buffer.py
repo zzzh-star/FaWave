@@ -25,12 +25,18 @@ class DataBuffer:
         self.fx_data = deque(maxlen=self.max_points)
         self.fy_data = deque(maxlen=self.max_points)
         self.fz_data = deque(maxlen=self.max_points)
+        self.latest_alarms = []
+        self.latest_recent_alarm = None
 
-    def add_point(self, rel_time, sample_index, ch1, ch2, ch3, ch4, fx=0.0, fy=0.0, fz=0.0, decoder_status="未启用", backend="未配置", validated="未验证"):
+    def add_point(self, rel_time, sample_index, ch1, ch2, ch3, ch4, fx=0.0, fy=0.0, fz=0.0, decoder_status="未启用", backend="未配置", validated="未验证", alarms=None, recent_alarm=None):
         with self._lock:
             self.latest_decoder_status = decoder_status
             self.latest_decoder_backend = backend
             self.latest_decoder_validated = validated
+            if alarms is not None:
+                self.latest_alarms = alarms
+            if recent_alarm is not None:
+                self.latest_recent_alarm = recent_alarm
             self.time_data.append(rel_time)
             self.index_data.append(sample_index)
             self.ch1_data.append(ch1)
@@ -55,5 +61,7 @@ class DataBuffer:
                 list(self.fz_data),
                 self.latest_decoder_status,
                 self.latest_decoder_backend,
-                self.latest_decoder_validated
+                self.latest_decoder_validated,
+                self.latest_alarms,
+                self.latest_recent_alarm
             )

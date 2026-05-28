@@ -4,9 +4,6 @@ FaWave_Python 是一个从零开始重构、跨平台且具备现代化 UI 界�
 
 ## 🚀 软件功能
 
-## Features
-1. Task Modes: Traction (牵拉) and Shear (剪切) with respective safety limits.
-2. Real-time 3D Interactive Model Viewer with STL parsing (`assets/models/device_model.stl`).
 - **以太网采集**：支持通过 TCP 或 UDP 每隔 20ms 发送自定义帧进行四通道电压数据（CH1~CH4）同步获取。
 - **现代化 UI**：基于 PySide6 构建的商业仪器级仪表板，提供实时浅色 / 深色主题自适应（支持 Windows 原生深色标题栏）。
 - **实时波形显示**：通过 `pyqtgraph` 提供超低延迟的多通道图表，支持拖拽、滚动缩放以及一键自动跟随。
@@ -111,18 +108,3 @@ build_exe.bat
 2. “仿真演示” 可以连上且曲线滚动；
 3. 左侧可随时勾选“启用本地存储”，曲线不产生阻塞卡顿；
 4. 关闭软件后，产生的 `Data/` 或 `logs/` 文件夹准确生成在 EXE 所在的同一目录内。
-
-## 3D Model Configuration
-The application attempts to load a 3D model from `assets/models/device_model.stl`.
-If you have custom CAD models from the GitHub repo, please rename the file to `device_model.stl` and place it in the `assets/models/` directory. Do not use Chinese characters in the filename in the code.
-If the STL is missing or corrupted, a fallback geometric model is rendered automatically.
-
-## Task Modes & Safety Alarms
-The system supports two task modes which you can toggle in the top control bar:
-1. **牵拉模式 (Traction Mode):** Detects 组织滑脱 (Tissue Slip), 组织撕裂 (Tissue Tear), 牵拉过载 (Traction Overload).
-2. **剪切模式 (Shear Mode):** Detects 缝合针脱出 (Needle Slip), 穿刺力过大 (Puncture Overload), 组织撕裂 (Tissue Tear), 拉线过紧 (Thread Overload).
-
-Normal states are deliberately suppressed from the Danger Alarms list. Thresholds can be customized in `config/default_config.json`.
-
-## Packaging
-When running `build_exe.bat`, ensure you copy the entire `dist` folder if you need to distribute the application, since it bundles the configuration and the STL assets alongside the executable.

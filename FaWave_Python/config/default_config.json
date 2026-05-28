@@ -25,8 +25,18 @@
         "force_demo_enabled": true,
         "baseline_duration_s": 6.0,
         "baseline_noise_v": 0.001,
-        "baseline_v": [-1.844, -1.842, -1.845, -1.846],
-        "dynamic_amplitude_v": [0.080, 0.060, 0.050, 0.040]
+        "baseline_v": [
+            -1.844,
+            -1.842,
+            -1.845,
+            -1.846
+        ],
+        "dynamic_amplitude_v": [
+            0.08,
+            0.06,
+            0.05,
+            0.04
+        ]
     },
     "force_decoder": {
         "enabled": true,
@@ -36,9 +46,24 @@
         "startup_warmup_ms": 5000,
         "matrix_order": "Fz_Fx_Fy",
         "matrix": [
-            [39.2375, 29.8622, 24.3702, 32.1236],
-            [17.6342, -0.1770, -20.2660, 0.3688],
-            [-7.9958, 19.9397, -6.9973, -17.1562]
+            [
+                39.2375,
+                29.8622,
+                24.3702,
+                32.1236
+            ],
+            [
+                17.6342,
+                -0.177,
+                -20.266,
+                0.3688
+            ],
+            [
+                -7.9958,
+                19.9397,
+                -6.9973,
+                -17.1562
+            ]
         ],
         "calibration": {
             "name": "default_4ch_force_matrix",
@@ -48,7 +73,7 @@
         },
         "filter": {
             "input_ema_alpha": 0.03,
-            "force_ema_alpha_fz": 0.10,
+            "force_ema_alpha_fz": 0.1,
             "force_ema_alpha_fx": 0.15,
             "force_ema_alpha_fy": 0.15,
             "use_median3_filter": true
@@ -72,5 +97,53 @@
             "fx": 3.5,
             "fy": 3.5
         }
+    },
+    "safety": {
+        "traction_mode": [
+            {
+                "event": "\u6ed1\u79fb\u62a5\u8b66",
+                "level": "Orange",
+                "threshold_v": 0.05,
+                "duration_ms": 100
+            },
+            {
+                "event": "\u6495\u88c2\u9884\u8b66",
+                "level": "Orange",
+                "threshold_v": 0.1,
+                "duration_ms": 50
+            },
+            {
+                "event": "\u8d85\u8f7d\u62a5\u8b66",
+                "level": "Red",
+                "threshold_v": 0.2,
+                "duration_ms": 100
+            }
+        ],
+        "shear_mode": [
+            {
+                "event": "\u8fdb\u9488\u6ed1\u79fb",
+                "level": "Orange",
+                "threshold_v": 0.05,
+                "duration_ms": 100
+            },
+            {
+                "event": "\u7a7f\u523a\u8d85\u8f7d",
+                "level": "Red",
+                "threshold_v": 0.2,
+                "duration_ms": 100
+            },
+            {
+                "event": "\u526a\u5207\u6495\u88c2",
+                "level": "Orange",
+                "threshold_v": 0.1,
+                "duration_ms": 50
+            },
+            {
+                "event": "\u8fc7\u7ebf\u8d85\u8f7d",
+                "level": "Red",
+                "threshold_v": 0.2,
+                "duration_ms": 100
+            }
+        ]
     }
 }

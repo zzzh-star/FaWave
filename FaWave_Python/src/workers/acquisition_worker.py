@@ -29,10 +29,10 @@ class AcquisitionWorker(QThread):
 
         # Load force decoder and alarm manager if available (stubs for now)
         try:
-            from ..force.alarm_manager import AlarmManager
-            self.alarm_manager = AlarmManager(self.config)
+            from ..safety.safety_monitor import SafetyMonitor
+            self.safety_monitor = SafetyMonitor(self.config)
         except ImportError:
-            self.alarm_manager = None
+            self.safety_monitor = None
 
         self.init_decoder()
 
@@ -41,6 +41,10 @@ class AcquisitionWorker(QThread):
         self.calibration_version = self.config.get("force_decoder", {}).get("calibration", {}).get("version", "未知")
         self.calibration_date = self.config.get("force_decoder", {}).get("calibration", {}).get("date", "未配置")
         self.algorithm = self.config.get("force_decoder", {}).get("algorithm", "python_force_decoder")
+
+    def set_task_mode(self, mode):
+        if hasattr(self, 'safety_monitor') and self.safety_monitor:
+            self.safety_monitor.set_task_mode(mode)
 
     def init_decoder(self):
         try:
@@ -176,20 +180,20 @@ class AcquisitionWorker(QThread):
                     data_dict["calibration_date"] = self.calibration_date
                     data_dict["acquisition_mode"] = "真实设备" if self.mode == "TCP" else "仿真演示"
 
-                    if self.alarm_manager:
-                        if force_res.get("status") in ["已启用", "死区内"]:
-                            alarms = self.alarm_manager.evaluate(
-                                force_res.get("fx", 0.0),
-                                force_res.get("fy", 0.0),
-                                force_res.get("fz", 0.0)
-                            )
-                            data_dict["alarms"] = alarms
-                        else:
-                            data_dict["alarms"] = [
-                                {"level": "未配置", "message": "解耦未就绪"},
-                                {"level": "未配置", "message": "解耦未就绪"},
-                                {"level": "未配置", "message": "解耦未就绪"}
-                            ]
+                    if self.safety_monitor:
+                        alarms = self.safety_monitor.update(
+                            force_res.get("fx", 0.0),
+                            force_res.get("fy", 0.0),
+                            force_res.get("fz", 0.0),
+                            rel_time_ms,
+                            force_res.get("status", "未启用")
+                        )
+                        data_dict["alarms"] = alarms
+                        recent = self.safety_monitor.get_recent_alarm()
+                        data_dict["recent_alarm"] = recent
+                        data_dict["task_mode"] = self.safety_monitor.mode
+                    else:
+                        data_dict["task_mode"] = "牵拉模式"
 
                 # Reset error counter on success
                 self.consecutive_errors = 0

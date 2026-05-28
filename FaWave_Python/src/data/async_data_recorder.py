@@ -31,7 +31,7 @@ class AsyncDataRecorder:
             "Baseline1_V", "Baseline2_V", "Baseline3_V", "Baseline4_V",
             "DecoderStatus", "DecoderValid", "Algorithm", "InputUnit", "InputScaleToV",
             "CalibrationName", "CalibrationVersion", "CalibrationDate",
-            "Alarm1", "Alarm2", "Alarm3",
+            "TaskMode", "TaskState", "AlarmEvent", "AlarmLevel", "AlarmReason", "AlarmTriggered", "AlarmTimestamp_ms",
             "RawHex", "TrailerHex", "Status"
         ]
 
@@ -135,12 +135,19 @@ class AsyncDataRecorder:
         if not self.is_recording:
             return
 
-        alarms = data_dict.get("alarms", [
-            {"level": "未配置"}, {"level": "未配置"}, {"level": "未配置"}
-        ])
-        alarm1 = alarms[0]["level"] if len(alarms) > 0 else "未配置"
-        alarm2 = alarms[1]["level"] if len(alarms) > 1 else "未配置"
-        alarm3 = alarms[2]["level"] if len(alarms) > 2 else "未配置"
+        recent_alarm = data_dict.get("recent_alarm", None)
+        if recent_alarm:
+             alarm_event = recent_alarm.get("event", "")
+             alarm_level = recent_alarm.get("level", "")
+             alarm_reason = recent_alarm.get("reason", "")
+             alarm_ts = recent_alarm.get("ts", 0)
+             alarm_triggered = True
+        else:
+             alarm_event = ""
+             alarm_level = ""
+             alarm_reason = ""
+             alarm_ts = 0
+             alarm_triggered = False
 
         d = data_dict.get("d", [0.0]*4)
         baseline = data_dict.get("baseline", [0.0]*4)
@@ -173,9 +180,13 @@ class AsyncDataRecorder:
             data_dict.get("calibration_name", "未配置"),
             data_dict.get("calibration_version", "未知"),
             data_dict.get("calibration_date", "未配置"),
-            alarm1,
-            alarm2,
-            alarm3,
+            data_dict.get("task_mode", ""),
+            data_dict.get("task_state", ""),
+            alarm_event,
+            alarm_level,
+            alarm_reason,
+            alarm_triggered,
+            alarm_ts,
             raw_hex,
             trailer_hex,
             status

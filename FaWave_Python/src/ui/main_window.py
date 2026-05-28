@@ -12,6 +12,7 @@ import ctypes
 import pyqtgraph as pg
 
 from .advanced_settings_dialog import AdvancedSettingsDialog
+from .widgets.model_viewer import ModelViewer
 from ..workers.acquisition_worker import AcquisitionWorker
 from ..data.data_buffer import DataBuffer
 from ..data.async_data_recorder import AsyncDataRecorder
@@ -127,18 +128,23 @@ class AlarmCard(QWidget):
         layout.addLayout(header_layout)
         layout.addWidget(self.desc_label)
 
-    def set_status(self, status, desc):
-        self.status_label.setText(f"{status}")
-        self.desc_label.setText(f"{desc}")
+    def set_state(self, title, level, reason):
+        self.title_label.setText(title)
+        self.status_label.setText(level)
+        self.desc_label.setText(reason)
 
-        if status == "正常":
+        if level == "未触发":
             self.status_label.setProperty("class", "alarm-status-normal")
-        elif status == "预警":
+            self.status_label.setStyleSheet("color: #94A3B8;")
+        elif level == "预警":
             self.status_label.setProperty("class", "alarm-status-warning")
-        elif status == "危险":
+            self.status_label.setStyleSheet("color: #F59E0B;")
+        elif level == "已触发":
             self.status_label.setProperty("class", "alarm-status-danger")
+            self.status_label.setStyleSheet("color: #EF4444;")
         else:
             self.status_label.setProperty("class", "alarm-status-unconfigured")
+            self.status_label.setStyleSheet("color: #64748B;")
 
         self.style().unpolish(self.status_label)
         self.style().polish(self.status_label)
@@ -194,14 +200,18 @@ class MainWindow(QMainWindow):
 
         self.setup_header(main_layout)
 
-        # Main Content Area - HBox
-        content_layout = QHBoxLayout()
-        content_layout.setSpacing(16)
-        main_layout.addLayout(content_layout, stretch=1)
+        # Main Content Area - Use QSplitter for horizontal resizing robustly
+        h_splitter = QSplitter(Qt.Horizontal)
+        h_splitter.setObjectName("mainSplitter")
+        h_splitter.setHandleWidth(4)
+        main_layout.addWidget(h_splitter, stretch=1)
 
-        self.setup_left_panel(content_layout)
-        self.setup_center_panel(content_layout)
-        self.setup_right_panel(content_layout)
+        self.setup_left_panel(h_splitter)
+        self.setup_center_panel(h_splitter)
+        self.setup_right_panel(h_splitter)
+
+        # Set generous middle panel size
+        h_splitter.setSizes([320, 1000, 280])
 
         self.setup_status_bar()
 
@@ -247,6 +257,18 @@ class MainWindow(QMainWindow):
         theme_layout.addWidget(theme_label)
         theme_layout.addWidget(self.btn_theme)
 
+        # Task Mode Switch
+        task_mode_widget = QFrame()
+        task_mode_widget.setObjectName("valCard")
+        task_mode_layout = QHBoxLayout(task_mode_widget)
+        task_mode_layout.setContentsMargins(12, 6, 12, 6)
+        task_label = QLabel("任务模式")
+        task_label.setProperty("class", "sys-stat-label")
+        self.task_mode_combo = SegmentedControl(["牵拉模式", "剪切模式"], "牵拉模式")
+        self.task_mode_combo.currentChanged.connect(self.on_task_mode_changed)
+        task_mode_layout.addWidget(task_label)
+        task_mode_layout.addWidget(self.task_mode_combo)
+
         self.btn_advanced = QPushButton("⚙ 高级设置")
         self.btn_advanced.setObjectName("btnAdvanced")
         self.btn_advanced.clicked.connect(self.open_advanced_settings)
@@ -255,6 +277,8 @@ class MainWindow(QMainWindow):
         self.status_capsule.setObjectName("statusCapsule_Disconnected")
         self.status_capsule.setAlignment(Qt.AlignCenter)
 
+        header_right_layout.addWidget(task_mode_widget)
+        header_right_layout.addSpacing(16)
         header_right_layout.addWidget(theme_widget)
         header_right_layout.addSpacing(16)
         header_right_layout.addWidget(self.btn_advanced)
@@ -384,7 +408,7 @@ class MainWindow(QMainWindow):
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(16)
 
-        self.setup_value_cards(center_layout)
+        self.setup_overview_area(center_layout)
 
         # Splitter for the two plots
         plot_splitter = QSplitter(Qt.Vertical)
@@ -398,20 +422,42 @@ class MainWindow(QMainWindow):
         plot_splitter.setSizes([600, 400])
 
         center_layout.addWidget(plot_splitter, stretch=1)
-        parent_layout.addWidget(center_panel, stretch=1)
 
-    def setup_value_cards(self, parent_layout):
+        # Safe addition handling QSplitter or QBoxLayout
+        if isinstance(parent_layout, QSplitter):
+            parent_layout.addWidget(center_panel)
+        else:
+            parent_layout.addWidget(center_panel, stretch=1)
+
+    def setup_overview_area(self, parent_layout):
         overview_card = QWidget()
         overview_card.setProperty("class", "Card")
-        overview_card.setMinimumHeight(150)
+        overview_card.setMinimumHeight(240)
+        overview_card.setMaximumHeight(260)
         overview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        layout = QVBoxLayout(overview_card)
+
+        layout = QHBoxLayout(overview_card)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
+
+        # 25% 3D Viewport
+        try:
+            self.gl_viewport = ModelViewer()
+            layout.addWidget(self.gl_viewport, stretch=1)
+        except Exception as e:
+            lbl = QLabel(f"3D模型加载失败:\n{e}")
+            lbl.setAlignment(Qt.AlignCenter)
+            layout.addWidget(lbl, stretch=1)
+            self.gl_viewport = None
+
+        # 75% Values
+        values_widget = QWidget()
+        v_layout = QVBoxLayout(values_widget)
+        v_layout.setContentsMargins(0, 0, 0, 0)
 
         title = QLabel("实时数据总览")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        layout.addWidget(title)
+        v_layout.addWidget(title)
 
         grid = QGridLayout()
         grid.setSpacing(10)
@@ -459,7 +505,9 @@ class MainWindow(QMainWindow):
         for i in range(4):
             grid.setColumnStretch(i, 1)
 
-        layout.addLayout(grid)
+        v_layout.addLayout(grid)
+        layout.addWidget(values_widget, stretch=3)
+
         parent_layout.addWidget(overview_card, stretch=0)
 
     def create_legend_toggle_chip(self, text, color):
@@ -576,34 +624,55 @@ class MainWindow(QMainWindow):
         parent_layout.addWidget(right_scroll)
 
     def setup_alarm_panel(self, parent_layout):
-        alarm_card = QWidget()
-        alarm_card.setProperty("class", "Card")
-        layout = QVBoxLayout(alarm_card)
-        layout.setSpacing(8)
+        self.alarm_card_widget = QWidget()
+        self.alarm_card_widget.setProperty("class", "Card")
+        self.alarm_layout = QVBoxLayout(self.alarm_card_widget)
+        self.alarm_layout.setSpacing(8)
 
         title = QLabel("安全报警")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        layout.addWidget(title)
+        self.alarm_layout.addWidget(title)
 
         self.alarm_cards = []
-        for i in range(3):
+        # Pre-allocate 4 slots (max for suturing mode)
+        for i in range(4):
             card = AlarmCard(f"● 报警 {i+1}")
             self.alarm_cards.append(card)
-            layout.addWidget(card)
+            self.alarm_layout.addWidget(card)
 
         # Recent Alarms
-        layout.addSpacing(8)
+        self.alarm_layout.addSpacing(8)
         recent_title = QLabel("最近报警")
         recent_title.setStyleSheet("font-weight: bold;")
-        layout.addWidget(recent_title)
+        self.alarm_layout.addWidget(recent_title)
 
         self.recent_alarm_label = QLabel("暂无报警信息")
         self.recent_alarm_label.setProperty("class", "sys-stat-label")
         self.recent_alarm_label.setWordWrap(True)
         self.recent_alarm_label.setStyleSheet("background-color: transparent; border: 1px solid #DDE5F0; border-radius: 4px; padding: 6px;")
-        layout.addWidget(self.recent_alarm_label)
+        self.alarm_layout.addWidget(self.recent_alarm_label)
 
-        parent_layout.addWidget(alarm_card)
+        parent_layout.addWidget(self.alarm_card_widget)
+
+    def update_alarm_ui(self, mode):
+        # Refresh the UI layout properties for alarms dynamically
+        try:
+             from ..safety.safety_monitor import SafetyMonitor
+             if not hasattr(self, 'safety_monitor'):
+                  self.safety_monitor = SafetyMonitor(self.config)
+
+             self.safety_monitor.set_task_mode(mode)
+             current = self.safety_monitor.get_current_alarms()
+             for i, card in enumerate(self.alarm_cards):
+                  if i < len(current):
+                       cfg = current[i]
+                       card.set_state(f"● {cfg['event']}", cfg['level'], cfg['reason'])
+                       card.show()
+                  else:
+                       card.hide()
+        except ImportError:
+             for card in self.alarm_cards:
+                  card.set_state("未配置", "未配置", "无")
 
     def setup_system_status_panel(self, parent_layout):
         sys_card = QWidget()
@@ -619,7 +688,7 @@ class MainWindow(QMainWindow):
         grid.setVerticalSpacing(12)
         grid.setHorizontalSpacing(16)
 
-        labels = ["连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "算法状态", "输入单位"]
+        labels = ["当前任务", "连接状态", "采集模式", "有效帧", "错误帧", "运行时间", "保存状态", "解耦状态", "算法状态", "输入单位"]
         self.sys_values = {}
 
         for i, lbl in enumerate(labels):
@@ -645,6 +714,7 @@ class MainWindow(QMainWindow):
         self.sys_values["最近错误"].setWordWrap(True)
         layout.addWidget(self.sys_values["最近错误"])
 
+        self.sys_values["当前任务"].setText("牵拉模式")
         self.sys_values["连接状态"].setText("未连接")
         self.sys_values["保存状态"].setText("未保存")
         self.sys_values["解耦状态"].setText("未启用")
@@ -695,6 +765,9 @@ class MainWindow(QMainWindow):
                 plot.getAxis('bottom').setTextPen(fg_color)
                 plot.showGrid(x=True, y=True, alpha=grid_alpha/255.0)
 
+            if hasattr(self, 'gl_viewport'):
+                self.gl_viewport.apply_theme(self.current_theme)
+
             # Apply Windows DWM dark title bar if running on Windows
             if os.name == 'nt':
                 try:
@@ -713,6 +786,15 @@ class MainWindow(QMainWindow):
             self.repaint()
         except Exception as e:
             print(f"Failed to load stylesheet: {e}")
+
+    def on_task_mode_changed(self, mode):
+        self.logger.info(f"切换任务模式: {mode}")
+        if hasattr(self, 'sys_values') and "当前任务" in self.sys_values:
+             self.sys_values["当前任务"].setText(mode)
+        # Notify the safety monitor here (will be implemented in next step)
+        if hasattr(self, 'safety_monitor'):
+             self.safety_monitor.set_task_mode(mode)
+             self.update_alarm_ui(mode)
 
     def toggle_theme(self):
         if self.current_theme == 'light':
@@ -1080,7 +1162,19 @@ class MainWindow(QMainWindow):
     def update_ui(self):
         self.update_status()
 
-        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status, backend, validated = self.data_buffer.get_data()
+        t_data, idx_data, ch1, ch2, ch3, ch4, fx, fy, fz, decoder_status, backend, validated, alarms, recent_alarm = self.data_buffer.get_data()
+
+        if alarms:
+            for i, card in enumerate(self.alarm_cards):
+                if i < len(alarms):
+                    cfg = alarms[i]
+                    card.set_state(f"● {cfg['event']}", cfg['level'], cfg['reason'])
+                    card.show()
+                else:
+                    card.hide()
+
+        if recent_alarm:
+            self.recent_alarm_label.setText(f"{recent_alarm['event']} [{recent_alarm['level']}] - {recent_alarm['ts']/1000.0:.1f}s")
 
         self.sys_values["解耦状态"].setText(decoder_status)
         # Algorithm state is statically tied to python backend now
@@ -1097,6 +1191,9 @@ class MainWindow(QMainWindow):
         self.curve_fx.setData(t_data, fx)
         self.curve_fy.setData(t_data, fy)
         self.curve_fz.setData(t_data, fz)
+
+        if hasattr(self, 'gl_viewport') and self.gl_viewport is not None:
+            self.gl_viewport.update_force_vectors(fx[-1], fy[-1], fz[-1])
 
         # Apply Auto Follow
         if hasattr(self, 'auto_follow') and self.auto_follow:
@@ -1141,6 +1238,11 @@ class MainWindow(QMainWindow):
         self.card_fx.set_value(fx[-1])
         self.card_fy.set_value(fy[-1])
         self.card_fz.set_value(fz[-1])
+
+        # We need to look up if the buffer holds recent alarms. In a fully optimized flow
+        # we would fetch the alarms directly from the worker buffer.
+        # But we'll do it safely from the last data point if available, or force a poll.
+        pass
 
     def closeEvent(self, event):
         if self.worker.is_running:

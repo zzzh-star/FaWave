@@ -40,7 +40,7 @@ def main():
     print(f"成功读取 {len(df)} 行数据。")
 
     # Check Meta Data fields
-    meta_cols = ["InputUnit", "InputScaleToV", "DecoderBackend", "DecoderStatus", "DecoderValidated", "AcquisitionMode"]
+    meta_cols = ["InputUnit", "InputScaleToV", "Algorithm", "DecoderStatus", "AcquisitionMode", "TaskMode", "AlarmEvent"]
     print("\n--- 元数据配置 ---")
     for col in meta_cols:
         if col in df.columns:
