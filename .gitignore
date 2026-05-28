@@ -26,3 +26,5 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+FaWave_Python/tools/force_validation/*.csv
+FaWave_Python/logs/*.log

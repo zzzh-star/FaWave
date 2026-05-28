@@ -75,11 +75,14 @@ class ModelViewer(QWidget):
         import logging
         logger = logging.getLogger("ModelViewer")
 
-        if not HAS_STL or not os.path.exists(model_path):
-            logger.warning(f"未找到 3D 模型文件或缺少依赖: {model_path}")
-            self._load_fallback_geometry(f"未找到 3D 模型文件：
-assets/models/device_model.stl
-已切换为简化模型")
+        if not HAS_STL:
+            logger.warning("缺少 numpy-stl 依赖，无法读取 STL 文件")
+            self._load_fallback_geometry("缺少 numpy-stl 依赖，无法读取 STL 文件，请执行：python -m pip install numpy-stl")
+            return
+
+        if not os.path.exists(model_path):
+            logger.warning(f"未找到 3D 模型文件: {model_path}")
+            self._load_fallback_geometry("未找到 3D 模型文件：\nassets/models/device_model.stl\n已切换为简化模型")
             return
 
         logger.info(f"正在加载 3D 模型：{model_path}")

@@ -189,6 +189,8 @@ class MainWindow(QMainWindow):
 
         self.setup_ui()
         self.apply_theme()
+        if hasattr(self, 'task_mode_combo'):
+            self.update_alarm_ui(self.task_mode_combo.currentText())
 
     def setup_ui(self):
         main_widget = QWidget()
@@ -404,11 +406,43 @@ class MainWindow(QMainWindow):
 
     def setup_center_panel(self, parent_layout):
         center_panel = QWidget()
-        center_layout = QVBoxLayout(center_panel)
+        center_layout = QHBoxLayout(center_panel)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(16)
 
-        self.setup_overview_area(center_layout)
+        # Left column: 3D Model
+        left_col = QWidget()
+        left_layout = QVBoxLayout(left_col)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        model_card = QWidget()
+        model_card.setProperty("class", "Card")
+        model_layout = QVBoxLayout(model_card)
+        model_layout.setContentsMargins(8, 8, 8, 8)
+        model_layout.setSpacing(8)
+
+        model_title = QLabel("传感器三维模型")
+        model_title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        model_layout.addWidget(model_title)
+
+        try:
+            self.gl_viewport = ModelViewer()
+            model_layout.addWidget(self.gl_viewport, stretch=1)
+        except Exception as e:
+            lbl = QLabel(f"3D模型加载失败:\n{e}")
+            lbl.setAlignment(Qt.AlignCenter)
+            model_layout.addWidget(lbl, stretch=1)
+            self.gl_viewport = None
+
+        left_layout.addWidget(model_card)
+
+        # Right column: Data & Plots
+        right_col = QWidget()
+        right_layout = QVBoxLayout(right_col)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(16)
+
+        self.setup_value_cards(right_layout)
 
         # Splitter for the two plots
         plot_splitter = QSplitter(Qt.Vertical)
@@ -418,10 +452,12 @@ class MainWindow(QMainWindow):
         self.setup_voltage_plot(plot_splitter)
         self.setup_force_plot(plot_splitter)
 
-        # Set initial sizes heavily favoring the plots with approximately 60/40 ratio
         plot_splitter.setSizes([600, 400])
+        right_layout.addWidget(plot_splitter, stretch=1)
 
-        center_layout.addWidget(plot_splitter, stretch=1)
+        # Set roughly 25/75 ratio via stretch factors
+        center_layout.addWidget(left_col, stretch=1)
+        center_layout.addWidget(right_col, stretch=3)
 
         # Safe addition handling QSplitter or QBoxLayout
         if isinstance(parent_layout, QSplitter):
@@ -429,35 +465,19 @@ class MainWindow(QMainWindow):
         else:
             parent_layout.addWidget(center_panel, stretch=1)
 
-    def setup_overview_area(self, parent_layout):
+    def setup_value_cards(self, parent_layout):
         overview_card = QWidget()
         overview_card.setProperty("class", "Card")
-        overview_card.setMinimumHeight(240)
-        overview_card.setMaximumHeight(260)
+        overview_card.setMinimumHeight(120)
         overview_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
-        layout = QHBoxLayout(overview_card)
+        layout = QVBoxLayout(overview_card)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(16)
-
-        # 25% 3D Viewport
-        try:
-            self.gl_viewport = ModelViewer()
-            layout.addWidget(self.gl_viewport, stretch=1)
-        except Exception as e:
-            lbl = QLabel(f"3D模型加载失败:\n{e}")
-            lbl.setAlignment(Qt.AlignCenter)
-            layout.addWidget(lbl, stretch=1)
-            self.gl_viewport = None
-
-        # 75% Values
-        values_widget = QWidget()
-        v_layout = QVBoxLayout(values_widget)
-        v_layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
 
         title = QLabel("实时数据总览")
         title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        v_layout.addWidget(title)
+        layout.addWidget(title)
 
         grid = QGridLayout()
         grid.setSpacing(10)
@@ -505,8 +525,7 @@ class MainWindow(QMainWindow):
         for i in range(4):
             grid.setColumnStretch(i, 1)
 
-        v_layout.addLayout(grid)
-        layout.addWidget(values_widget, stretch=3)
+        layout.addLayout(grid)
 
         parent_layout.addWidget(overview_card, stretch=0)
 
@@ -636,7 +655,8 @@ class MainWindow(QMainWindow):
         self.alarm_cards = []
         # Pre-allocate 4 slots (max for suturing mode)
         for i in range(4):
-            card = AlarmCard(f"● 报警 {i+1}")
+            card = AlarmCard("")
+            card.hide()
             self.alarm_cards.append(card)
             self.alarm_layout.addWidget(card)
 
@@ -671,8 +691,7 @@ class MainWindow(QMainWindow):
                   else:
                        card.hide()
         except ImportError:
-             for card in self.alarm_cards:
-                  card.set_state("未配置", "未配置", "无")
+             pass
 
     def setup_system_status_panel(self, parent_layout):
         sys_card = QWidget()
@@ -791,7 +810,10 @@ class MainWindow(QMainWindow):
         self.logger.info(f"切换任务模式: {mode}")
         if hasattr(self, 'sys_values') and "当前任务" in self.sys_values:
              self.sys_values["当前任务"].setText(mode)
-        # Notify the safety monitor here (will be implemented in next step)
+
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.set_task_mode(mode)
+
         if hasattr(self, 'safety_monitor'):
              self.safety_monitor.set_task_mode(mode)
              self.update_alarm_ui(mode)

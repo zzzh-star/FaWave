@@ -4,9 +4,9 @@ FaWave_Python 是一个从零开始重构、跨平台且具备现代化 UI 界�
 
 ## 🚀 软件功能
 
-## Features
-1. Task Modes: Traction (牵拉) and Shear (剪切) with respective safety limits.
-2. Real-time 3D Interactive Model Viewer with STL parsing (`assets/models/device_model.stl`).
+## 新增特性
+1. **任务模式**：支持牵拉 (Traction) 与剪切 (Shear) 模式，并提供不同的安全阈值预警。
+2. **3D 交互视图**：实时 3D 交互式装置模型显示，解析真正的 STL 文件 (`assets/models/device_model.stl`)。
 - **以太网采集**：支持通过 TCP 或 UDP 每隔 20ms 发送自定义帧进行四通道电压数据（CH1~CH4）同步获取。
 - **现代化 UI**：基于 PySide6 构建的商业仪器级仪表板，提供实时浅色 / 深色主题自适应（支持 Windows 原生深色标题栏）。
 - **实时波形显示**：通过 `pyqtgraph` 提供超低延迟的多通道图表，支持拖拽、滚动缩放以及一键自动跟随。
@@ -112,17 +112,21 @@ build_exe.bat
 3. 左侧可随时勾选“启用本地存储”，曲线不产生阻塞卡顿；
 4. 关闭软件后，产生的 `Data/` 或 `logs/` 文件夹准确生成在 EXE 所在的同一目录内。
 
-## 3D Model Configuration
-The application attempts to load a 3D model from `assets/models/device_model.stl`.
-If you have custom CAD models from the GitHub repo, please rename the file to `device_model.stl` and place it in the `assets/models/` directory. Do not use Chinese characters in the filename in the code.
-If the STL is missing or corrupted, a fallback geometric model is rendered automatically.
+## 三维模型配置
+程序将尝试加载路径位于 `assets/models/device_model.stl` 的 3D 模型文件。
+* 如果使用了自定义的 STL 文件，请务必将其重命名为纯英文，不要在代码中使用中文路径。
+* 若 STL 缺失、损坏或环境缺乏 OpenGL 兼容性，系统自动降级提供简化的 3D 占位图，且不影响传感器的数据采集。
 
-## Task Modes & Safety Alarms
-The system supports two task modes which you can toggle in the top control bar:
-1. **牵拉模式 (Traction Mode):** Detects 组织滑脱 (Tissue Slip), 组织撕裂 (Tissue Tear), 牵拉过载 (Traction Overload).
-2. **剪切模式 (Shear Mode):** Detects 缝合针脱出 (Needle Slip), 穿刺力过大 (Puncture Overload), 组织撕裂 (Tissue Tear), 拉线过紧 (Thread Overload).
+## 任务模式与安全报警
+在系统顶部栏可随时无缝切换“牵拉模式”与“剪切模式”：
+1. **牵拉模式**：探测 `组织滑脱`、`组织撕裂` 以及 `牵拉过载`。
+2. **剪切模式**：探测 `缝合针脱出`、`穿刺力过大`、`组织撕裂` 以及 `拉线过紧`。
 
-Normal states are deliberately suppressed from the Danger Alarms list. Thresholds can be customized in `config/default_config.json`.
+上述报警阈值和触发规则窗长，均可在 `config/default_config.json` 中配置。
 
-## Packaging
-When running `build_exe.bat`, ensure you copy the entire `dist` folder if you need to distribute the application, since it bundles the configuration and the STL assets alongside the executable.
+详细说明请参考：
+* [安全报警规则](docs/安全报警规则.md)
+* [三维模型说明](docs/三维模型说明.md)
+* [使用说明](docs/使用说明.md)
+* [打包说明](docs/打包说明.md)
+* [更新日志](docs/更新日志.md)
