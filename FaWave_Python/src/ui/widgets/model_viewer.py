@@ -1,178 +1,317 @@
-import os
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
-import pyqtgraph as pg
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtGui import QMouseEvent, QVector3D, QWheelEvent
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+
+from .model_loader import MeshPart, ModelLoader
 
 try:
     import pyqtgraph.opengl as gl
-    HAS_GL = True
-except ImportError:
-    HAS_GL = False
+except Exception:  # noqa: BLE001
+    gl = None
 
-try:
-    import stl
-    HAS_STL = True
-except ImportError:
-    HAS_STL = False
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PySide6.QtCore import Qt
-from ...utils.resource import resource_path
+@dataclass
+class Theme:
+    bg: tuple[float, float, float, float]
+    grid: tuple[float, float, float, float]
+
+
+THEMES = {
+    "dark": Theme((0.08, 0.11, 0.16, 1.0), (0.8, 0.8, 0.8, 0.16)),
+    "light": Theme((0.96, 0.96, 0.97, 1.0), (0.6, 0.6, 0.6, 0.25)),
+}
+
+
+class InteractiveGLViewWidget(gl.GLViewWidget):
+    def __init__(self):
+        super().__init__()
+        self.min_distance = 0.55
+        self.max_distance = 40.0
+        self.zoom_sensitivity = 0.88
+        self.zoom_to_cursor_strength = 0.25
+        self.zoom_center_lerp = 0.25
+        self.pan_sensitivity = 1.0
+        self.rotate_sensitivity = 0.35
+        self.roll_sensitivity = 0.45
+        self.scene_radius = 1.0
+        self._last_pos = QPointF()
+
+    def wheelEvent(self, ev: QWheelEvent):
+        delta = ev.angleDelta().y()
+        if delta == 0:
+            return
+        steps = delta / 120.0
+        old_distance = float(self.opts.get("distance", 4.0))
+        new_distance = float(np.clip(old_distance * (self.zoom_sensitivity**steps), self.min_distance, self.max_distance))
+
+        pos = ev.position()
+        w = max(1.0, float(self.width()))
+        h = max(1.0, float(self.height()))
+        nx = (pos.x() / w - 0.5) * 2.0
+        ny = (0.5 - pos.y() / h) * 2.0
+
+        distance_ratio = (old_distance - new_distance) / max(old_distance, 1e-6)
+        camera_offset = self.cameraPosition() - self.opts["center"]
+        side_len = np.linalg.norm([camera_offset.x(), camera_offset.y(), 0.0])
+        right = np.array([-camera_offset.y(), camera_offset.x(), 0.0], dtype=float)
+        if side_len > 1e-6:
+            right /= side_len
+        else:
+            right = np.array([1.0, 0.0, 0.0])
+        up_vec = np.array([0.0, 0.0, 1.0])
+
+        zoom_direction = 1.0 if new_distance < old_distance else 0.6
+        base_shift = old_distance * self.zoom_to_cursor_strength * distance_ratio * zoom_direction
+        edge_boost = 1.0 + 0.7 * max(abs(nx), abs(ny))
+        pan_scale = base_shift * edge_boost
+
+        center = self.opts["center"]
+        target = np.array([
+            center.x() + float((-nx) * pan_scale * right[0] + ny * pan_scale * up_vec[0]),
+            center.y() + float((-nx) * pan_scale * right[1] + ny * pan_scale * up_vec[1]),
+            center.z() + float((-nx) * pan_scale * right[2] + ny * pan_scale * up_vec[2]),
+        ])
+        current = np.array([center.x(), center.y(), center.z()])
+        lerp = self.zoom_center_lerp * (1.1 if new_distance < old_distance else 0.8)
+        blended = current + (target - current) * float(np.clip(lerp, 0.05, 0.6))
+        center.setX(float(blended[0]))
+        center.setY(float(blended[1]))
+        center.setZ(float(blended[2]))
+
+        self.opts["distance"] = new_distance
+        self.update()
+        ev.accept()
+
+    def mousePressEvent(self, ev: QMouseEvent):
+        self._last_pos = ev.position()
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev: QMouseEvent):
+        diff = ev.position() - self._last_pos
+        self._last_pos = ev.position()
+        mid = bool(ev.buttons() & Qt.MiddleButton)
+        right = bool(ev.buttons() & Qt.RightButton)
+        shift = bool(ev.modifiers() & Qt.ShiftModifier)
+        ctrl = bool(ev.modifiers() & Qt.ControlModifier)
+
+        if mid:
+            viewer = self.parent()
+            if viewer is not None and hasattr(viewer, "rotate_model"):
+                if shift or ctrl:
+                    viewer.roll_view(diff.x() * self.roll_sensitivity)
+                else:
+                    viewer.rotate_model("y", -diff.x() * self.rotate_sensitivity)
+                    viewer.rotate_model("x", -diff.y() * self.rotate_sensitivity)
+                ev.accept()
+                return
+
+        if right:
+            self.pan(diff.x() * self.pan_sensitivity, diff.y() * self.pan_sensitivity, 0, relative="view")
+            self.update()
+            ev.accept()
+            return
+
+        super().mouseMoveEvent(ev)
+
+    def mouseDoubleClickEvent(self, ev: QMouseEvent):
+        if ev.button() == Qt.LeftButton:
+            parent = self.parent()
+            if parent is not None and hasattr(parent, "reset_view"):
+                parent.reset_view()
+                ev.accept()
+                return
+        super().mouseDoubleClickEvent(ev)
+
 
 class ModelViewer(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, model_root: str | None = None, parent=None):
         super().__init__(parent)
+        self.loader = ModelLoader(model_root=model_root)
+        self._status = {"loaded": False, "model_type": "fallback", "model_path": "", "part_count": 0, "fallback": True, "message": "初始化"}
+        self._mesh_items = []
+        self._base_parts: list[MeshPart] = []
+        self._force_items = {}
+        self._theme = "dark"
+        self._model_rotation = np.eye(3)
+        self._scene_extent = 1.6
+
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self.gl_widget = None
-        self.mesh_item = None
-
-        if HAS_GL:
-            try:
-                self.gl_widget = gl.GLViewWidget()
-                self.layout.addWidget(self.gl_widget)
-                self.setup_scene()
-            except Exception as e:
-                self.fallback_ui(str(e))
+        if gl is None:
+            self._view = None
+            self._hint = QLabel("当前环境不支持 OpenGL，已切换为简化视图")
+            self._hint.setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(self._hint)
+            self._status["message"] = self._hint.text()
         else:
-            self.fallback_ui("缺少 pyqtgraph.opengl 依赖或 OpenGL 驱动不兼容")
+            self._view = InteractiveGLViewWidget()
+            self.layout.addWidget(self._view)
+            self._hint = QLabel("")
+            self._hint.setAlignment(Qt.AlignCenter)
+            self.layout.addWidget(self._hint)
+            self._grid = gl.GLGridItem()
+            self._grid.setSize(x=2, y=2)
+            self._grid.setSpacing(x=0.2, y=0.2)
+            self._view.addItem(self._grid)
+            self._setup_force_items()
+            self.set_theme("dark")
+            self.load_best_available_model()
 
-    def fallback_ui(self, msg):
-        if self.gl_widget:
-            self.layout.removeWidget(self.gl_widget)
-            self.gl_widget.deleteLater()
-            self.gl_widget = None
-
-        lbl = QLabel(f"当前环境不支持 OpenGL，已切换为简化视图\n{msg}")
-        lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet("color: #94A3B8; background: transparent; border: 1px dashed #475569; border-radius: 4px;")
-        self.layout.addWidget(lbl)
-
-    def setup_scene(self):
-        # Set camera slightly elevated, looking down
-        self.gl_widget.setCameraPosition(distance=10, elevation=25, azimuth=45)
-
-        # Grid
-        self.grid = gl.GLGridItem(size=pg.Vector(20, 20, 1))
-        self.grid.setSpacing(1, 1, 1)
-        self.gl_widget.addItem(self.grid)
-
-        # Force Arrows (Lines representing Vectors)
-        self.arrow_fx = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,0,0]]), color=pg.glColor('#0EA5E9'), width=3, antialias=True)
-        self.arrow_fy = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,0,0]]), color=pg.glColor('#F59E0B'), width=3, antialias=True)
-        self.arrow_fz = gl.GLLinePlotItem(pos=np.array([[0,0,0], [0,0,0]]), color=pg.glColor('#EF4444'), width=3, antialias=True)
-
-        self.gl_widget.addItem(self.arrow_fx)
-        self.gl_widget.addItem(self.arrow_fy)
-        self.gl_widget.addItem(self.arrow_fz)
-
-        self.load_stl_model()
-        self.apply_theme('light')
-
-    def load_stl_model(self):
-        model_path = resource_path("assets/models/device_model.stl")
-
+    def load_best_available_model(self):
+        if self._view is None:
+            return
+        result = self.loader.load_best_available_model()
         import logging
         logger = logging.getLogger("ModelViewer")
+        for line in result.logs:
+            if "缺少依赖" in line or "未找到可用三维模型" in line:
+                logger.warning(line)
+            else:
+                logger.info(line)
 
-        if not HAS_STL:
-            logger.warning("缺少 numpy-stl 依赖，无法读取 STL 文件")
-            self._load_fallback_geometry("缺少 numpy-stl 依赖，无法读取 STL 文件，请执行：python -m pip install numpy-stl")
-            return
-
-        if not os.path.exists(model_path):
-            logger.warning(f"未找到 3D 模型文件: {model_path}")
-            self._load_fallback_geometry("未找到 3D 模型文件：\nassets/models/device_model.stl\n已切换为简化模型")
-            return
-
-        logger.info(f"正在加载 3D 模型：{model_path}")
-
-        try:
-            stl_mesh = stl.mesh.Mesh.from_file(model_path)
-
-            # Extract vertices and faces
-            # numpy-stl stores vertices in flat arrays of 9 elements (3 triangles x 3 coords)
-            vertices = stl_mesh.vectors.reshape(-1, 3)
-
-            # Auto-center
-            min_bound = vertices.min(axis=0)
-            max_bound = vertices.max(axis=0)
-            center = (min_bound + max_bound) / 2.0
-            vertices = vertices - center
-
-            # Normalize scale to target size 4.0
-            max_dim = (max_bound - min_bound).max()
-            if max_dim > 0:
-                scale = 4.0 / max_dim
-                vertices = vertices * scale
-
-            # Create faces array (0,1,2), (3,4,5)...
-            faces = np.arange(len(vertices)).reshape(-1, 3)
-
-            meshdata = gl.MeshData(vertexes=vertices, faces=faces)
-            self.mesh_item = gl.GLMeshItem(meshdata=meshdata, smooth=True, drawEdges=False, shader='shaded', computeNormals=True)
-            self.gl_widget.addItem(self.mesh_item)
-            logger.info("3D 模型加载成功")
-
-        except Exception as e:
-            logger.error(f"3D 模型解析失败: {e}")
-            self._load_fallback_geometry("3D 模型解析失败，请检查 STL 文件格式")
-
-    def _load_fallback_geometry(self, msg="已切换为简化视图"):
-        if hasattr(self, 'layout'):
-            lbl = QLabel(msg)
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color: #94A3B8; background: transparent; border: 1px dashed #475569; border-radius: 4px; padding: 10px;")
-            self.layout.addWidget(lbl)
-
-        # Base Cylinder/Box
-        self.base_item = gl.GLBoxItem(size=pg.Vector(4, 4, 1), color=(51, 65, 85, 200))
-        self.base_item.translate(-2, -2, -0.5)
-        self.gl_widget.addItem(self.base_item)
-
-        # Rod / Tool
-        self.rod_item = gl.GLBoxItem(size=pg.Vector(0.6, 0.6, 8), color=(148, 163, 184, 255))
-        self.rod_item.translate(-0.3, -0.3, 0.5)
-        self.gl_widget.addItem(self.rod_item)
-        self.mesh_item = None
-
-    def apply_theme(self, theme):
-        if not self.gl_widget: return
-        if theme == 'dark':
-            self.gl_widget.setBackgroundColor('#1E293B')
-            self.grid.setColor(pg.glColor(255, 255, 255, 50))
-            if hasattr(self, 'base_item'):
-                self.base_item.setColor(pg.glColor(51, 65, 85, 200))
-                self.rod_item.setColor(pg.glColor(148, 163, 184, 255))
-            if self.mesh_item:
-                self.mesh_item.setColor((148/255, 163/255, 184/255, 1.0))
+        self._clear_meshes()
+        self._model_rotation = np.eye(3)
+        if result.success:
+            import logging
+            logging.getLogger("ModelViewer").info(f"三维模型加载成功，模型类型：{result.model_type}")
+            self._base_parts = self._normalize_parts(result.parts)
+            self._view.scene_radius = max(0.8, float(self._scene_extent) * 0.5)
+            self._redraw_model_parts()
+            self._status = {
+                "loaded": True,
+                "model_type": result.model_type,
+                "model_path": result.model_path,
+                "part_count": len(self._base_parts),
+                "fallback": False,
+                "message": "彩色装配体模型加载成功" if result.model_type in {"glb", "gltf", "obj"} else "STL 几何模型加载成功",
+            }
+            self._hint.setText("")
         else:
-            self.gl_widget.setBackgroundColor('#FFFFFF')
-            self.grid.setColor(pg.glColor(0, 0, 0, 50))
-            if hasattr(self, 'base_item'):
-                self.base_item.setColor(pg.glColor(203, 213, 225, 200))
-                self.rod_item.setColor(pg.glColor(100, 116, 139, 255))
-            if self.mesh_item:
-                self.mesh_item.setColor((100/255, 116/255, 139/255, 1.0))
+            self._base_parts = []
+            import logging
+            logging.getLogger("ModelViewer").warning(f"三维模型加载失败，原因：{result.message}。已切换为简化模型")
+            self._add_fallback_cube()
+            self._status = {
+                "model_type": "fallback",
+                "model_path": "",
+                "part_count": 0,
+                "fallback": True,
+                "message": result.message,
+            }
+            self._hint.setText(result.message)
+        self.reset_view()
 
-    def update_force_vectors(self, fx, fy, fz):
-        if not self.gl_widget: return
+    def reload_model(self):
+        self.load_best_available_model()
 
-        # Scale forces for visual impact
-        scale = 0.5
+    def set_theme(self, theme: str):
+        self._theme = theme if theme in THEMES else "dark"
+        t = THEMES[self._theme]
+        if self._view is not None:
+            self._view.setBackgroundColor(tuple(int(c * 255) for c in t.bg[:3]))
+            self._grid.setColor(t.grid)
 
-        fx_v = fx * scale
-        fy_v = fy * scale
-        fz_v = fz * scale
+    def update_force_vectors(self, fx: float, fy: float, fz: float):
+        if self._view is None:
+            return
+        self._set_force("fx", np.array([fx, 0, 0], dtype=float), (0.2, 0.47, 0.95, 1.0))
+        self._set_force("fy", np.array([0, fy, 0], dtype=float), (0.95, 0.55, 0.18, 1.0))
+        self._set_force("fz", np.array([0, 0, fz], dtype=float), (0.92, 0.26, 0.23, 1.0))
 
-        # Base vector points starting at origin (center of model)
-        # or top of rod if fallback
-        origin = [0, 0, 4.5] if not self.mesh_item else [0, 0, 2.0]
+    def get_status(self) -> dict:
+        return dict(self._status)
 
-        pos_fx = np.array([origin, [origin[0] + fx_v, origin[1], origin[2]]])
-        pos_fy = np.array([origin, [origin[0], origin[1] + fy_v, origin[2]]])
-        pos_fz = np.array([origin, [origin[0], origin[1], origin[2] + fz_v]])
+    def reset_view(self):
+        if self._view is None:
+            return
+        self._model_rotation = np.eye(3)
+        self._redraw_model_parts()
+        self._view.opts["center"] = QVector3D(0.0, 0.0, 0.0)
+        self._view.opts["distance"] = max(3.0, self._view.scene_radius * 3.2)
+        self._view.opts["elevation"] = 22.0
+        self._view.opts["azimuth"] = 35.0
+        self._view.update()
 
-        self.arrow_fx.setData(pos=pos_fx)
-        self.arrow_fy.setData(pos=pos_fy)
-        self.arrow_fz.setData(pos=pos_fz)
+    def roll_view(self, angle_deg: float):
+        self.rotate_model("z", angle_deg)
+
+    def rotate_model(self, axis: str, angle_deg: float):
+        if not self._base_parts:
+            return
+        rad = np.deg2rad(angle_deg)
+        c, s = np.cos(rad), np.sin(rad)
+        if axis == "x":
+            r = np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=float)
+        elif axis == "y":
+            r = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=float)
+        else:
+            r = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=float)
+        self._model_rotation = r @ self._model_rotation
+        self._redraw_model_parts()
+
+    def _setup_force_items(self):
+        for key in ("fx", "fy", "fz"):
+            item = gl.GLLinePlotItem(pos=np.zeros((2, 3)), width=2, antialias=True)
+            self._force_items[key] = item
+            self._view.addItem(item)
+
+    def _set_force(self, key: str, vec: np.ndarray, color):
+        length = float(np.linalg.norm(vec))
+        if length < 1e-3:
+            self._force_items[key].setData(pos=np.zeros((2, 3)), color=(0, 0, 0, 0))
+            return
+        max_len = 0.7
+        scale = min(1.0, length / 100.0)
+        end = vec / length * (0.1 + max_len * scale)
+        self._force_items[key].setData(pos=np.vstack([[0, 0, 0], end]), color=color)
+
+    def _clear_meshes(self):
+        if self._view is None:
+            return
+        for item in self._mesh_items:
+            self._view.removeItem(item)
+        self._mesh_items.clear()
+
+    def _redraw_model_parts(self):
+        self._clear_meshes()
+        rotated = []
+        for p in self._base_parts:
+            v = p.vertices @ self._model_rotation.T
+            rotated.append(MeshPart(vertices=v, faces=p.faces, color=p.color, name=p.name))
+        self._add_parts(rotated)
+
+    def _add_parts(self, parts: list[MeshPart]):
+        if self._view is None:
+            return
+        for part in parts:
+            md = gl.MeshData(vertexes=part.vertices, faces=part.faces)
+            item = gl.GLMeshItem(meshdata=md, smooth=False, shader="shaded", drawEdges=False, color=part.color)
+            self._mesh_items.append(item)
+            self._view.addItem(item)
+
+    def _normalize_parts(self, parts: list[MeshPart]) -> list[MeshPart]:
+        all_vertices = np.vstack([p.vertices for p in parts])
+        min_v, max_v = all_vertices.min(axis=0), all_vertices.max(axis=0)
+        center = (min_v + max_v) / 2.0
+        extent_vec = max_v - min_v
+        extent = float(np.max(extent_vec))
+        self._scene_extent = max(1e-6, extent)
+        scale = 1.0 if extent < 1e-6 else 1.6 / extent
+        return [MeshPart(vertices=(p.vertices - center) * scale, faces=p.faces, color=p.color, name=p.name) for p in parts]
+
+    def _add_fallback_cube(self):
+        vertices = np.array([
+            [-0.4, -0.4, -0.4], [0.4, -0.4, -0.4], [0.4, 0.4, -0.4], [-0.4, 0.4, -0.4],
+            [-0.4, -0.4, 0.4], [0.4, -0.4, 0.4], [0.4, 0.4, 0.4], [-0.4, 0.4, 0.4],
+        ], dtype=float)
+        faces = np.array([
+            [0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4],
+            [2, 3, 7], [2, 7, 6], [1, 2, 6], [1, 6, 5], [0, 3, 7], [0, 7, 4],
+        ], dtype=np.int32)
+        self._add_parts([MeshPart(vertices=vertices, faces=faces, color=(0.72, 0.78, 0.86, 1.0), name="fallback")])

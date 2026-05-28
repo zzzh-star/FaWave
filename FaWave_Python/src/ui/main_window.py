@@ -213,7 +213,7 @@ class MainWindow(QMainWindow):
         self.setup_right_panel(h_splitter)
 
         # Set generous middle panel size
-        h_splitter.setSizes([320, 1000, 280])
+        h_splitter.setSizes([290, 1100, 300])
 
         self.setup_status_bar()
 
@@ -294,8 +294,8 @@ class MainWindow(QMainWindow):
 
     def setup_left_panel(self, parent_layout):
         left_scroll = QScrollArea()
-        left_scroll.setMinimumWidth(320)
-        left_scroll.setMaximumWidth(360)
+        left_scroll.setMinimumWidth(290)
+        left_scroll.setMaximumWidth(330)
         left_scroll.setWidgetResizable(True)
         left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -426,7 +426,9 @@ class MainWindow(QMainWindow):
         model_layout.addWidget(model_title)
 
         try:
-            self.gl_viewport = ModelViewer()
+            from ..utils.resource import resource_path
+            model_root = resource_path("assets/models")
+            self.gl_viewport = ModelViewer(model_root=model_root)
             model_layout.addWidget(self.gl_viewport, stretch=1)
         except Exception as e:
             lbl = QLabel(f"3D模型加载失败:\n{e}")
@@ -784,8 +786,8 @@ class MainWindow(QMainWindow):
                 plot.getAxis('bottom').setTextPen(fg_color)
                 plot.showGrid(x=True, y=True, alpha=grid_alpha/255.0)
 
-            if hasattr(self, 'gl_viewport'):
-                self.gl_viewport.apply_theme(self.current_theme)
+            if hasattr(self, 'gl_viewport') and self.gl_viewport is not None:
+                self.gl_viewport.set_theme(self.current_theme)
 
             # Apply Windows DWM dark title bar if running on Windows
             if os.name == 'nt':
@@ -1215,7 +1217,8 @@ class MainWindow(QMainWindow):
         self.curve_fz.setData(t_data, fz)
 
         if hasattr(self, 'gl_viewport') and self.gl_viewport is not None:
-            self.gl_viewport.update_force_vectors(fx[-1], fy[-1], fz[-1])
+            if len(fx) > 0 and len(fy) > 0 and len(fz) > 0:
+                self.gl_viewport.update_force_vectors(fx[-1], fy[-1], fz[-1])
 
         # Apply Auto Follow
         if hasattr(self, 'auto_follow') and self.auto_follow:
