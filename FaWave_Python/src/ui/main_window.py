@@ -421,20 +421,39 @@ class MainWindow(QMainWindow):
         model_layout.setContentsMargins(8, 8, 8, 8)
         model_layout.setSpacing(8)
 
-        model_title = QLabel("传感器三维模型")
+        title_row = QHBoxLayout()
+        model_title = QLabel("传感器模型展示")
         model_title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        model_layout.addWidget(model_title)
+        title_row.addWidget(model_title)
 
-        try:
-            from ..utils.resource import resource_path
-            model_root = resource_path("assets/models")
-            self.gl_viewport = ModelViewer(model_root=model_root)
-            model_layout.addWidget(self.gl_viewport, stretch=1)
-        except Exception as e:
-            lbl = QLabel(f"3D模型加载失败:\n{e}")
-            lbl.setAlignment(Qt.AlignCenter)
-            model_layout.addWidget(lbl, stretch=1)
-            self.gl_viewport = None
+        self.btn_toggle_3d = QPushButton("查看 3D 模型")
+        self.btn_toggle_3d.setStyleSheet("padding: 4px 8px; font-size: 12px; border-radius: 4px;")
+        self.btn_toggle_3d.clicked.connect(self.toggle_3d_view)
+        title_row.addWidget(self.btn_toggle_3d)
+        title_row.addStretch()
+        model_layout.addLayout(title_row)
+
+        from PySide6.QtWidgets import QStackedWidget
+        self.model_stacked_widget = QStackedWidget()
+
+        # Page 0: Image Preview
+        self.preview_label = QLabel()
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        from ..utils.resource import resource_path
+        from PySide6.QtGui import QPixmap
+        import os
+        img_path = resource_path("assets/images/model_preview.png")
+        if os.path.exists(img_path):
+            pixmap = QPixmap(img_path)
+            self.preview_label.setPixmap(pixmap.scaled(250, 250, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.preview_label.setText("未找到模型预览图片\nassets/images/model_preview.png")
+            self.preview_label.setStyleSheet("color: #94A3B8; border: 1px dashed #475569; border-radius: 4px;")
+
+        self.model_stacked_widget.addWidget(self.preview_label)
+
+        self.gl_viewport = None
+        model_layout.addWidget(self.model_stacked_widget, stretch=1)
 
         left_layout.addWidget(model_card)
 
@@ -819,6 +838,29 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'safety_monitor'):
              self.safety_monitor.set_task_mode(mode)
              self.update_alarm_ui(mode)
+
+    def toggle_3d_view(self):
+        if self.model_stacked_widget.currentIndex() == 0:
+            # Switch to 3D View
+            if self.gl_viewport is None:
+                from ..utils.resource import resource_path
+                model_root = resource_path("assets/models")
+                try:
+                    self.gl_viewport = ModelViewer(model_root=model_root)
+                    self.gl_viewport.set_theme(self.current_theme)
+                    self.model_stacked_widget.addWidget(self.gl_viewport)
+                except Exception as e:
+                    lbl = QLabel(f"3D模型加载失败:\n{e}")
+                    lbl.setAlignment(Qt.AlignCenter)
+                    self.model_stacked_widget.addWidget(lbl)
+                    self.gl_viewport = None
+
+            self.model_stacked_widget.setCurrentIndex(1)
+            self.btn_toggle_3d.setText("返回图片")
+        else:
+            # Switch to Image View
+            self.model_stacked_widget.setCurrentIndex(0)
+            self.btn_toggle_3d.setText("查看 3D 模型")
 
     def toggle_theme(self):
         if self.current_theme == 'light':
@@ -1217,8 +1259,9 @@ class MainWindow(QMainWindow):
         self.curve_fz.setData(t_data, fz)
 
         if hasattr(self, 'gl_viewport') and self.gl_viewport is not None:
-            if len(fx) > 0 and len(fy) > 0 and len(fz) > 0:
-                self.gl_viewport.update_force_vectors(fx[-1], fy[-1], fz[-1])
+            if hasattr(self, 'model_stacked_widget') and self.model_stacked_widget.currentIndex() == 1:
+                if len(fx) > 0 and len(fy) > 0 and len(fz) > 0:
+                    self.gl_viewport.update_force_vectors(fx[-1], fy[-1], fz[-1])
 
         # Apply Auto Follow
         if hasattr(self, 'auto_follow') and self.auto_follow:
