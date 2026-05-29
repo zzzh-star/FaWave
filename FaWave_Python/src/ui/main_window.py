@@ -845,22 +845,71 @@ class MainWindow(QMainWindow):
             if self.gl_viewport is None:
                 from ..utils.resource import resource_path
                 model_root = resource_path("assets/models")
-                try:
-                    self.gl_viewport = ModelViewer(model_root=model_root)
-                    self.gl_viewport.set_theme(self.current_theme)
-                    self.model_stacked_widget.addWidget(self.gl_viewport)
-                except Exception as e:
-                    lbl = QLabel(f"3D模型加载失败:\n{e}")
-                    lbl.setAlignment(Qt.AlignCenter)
-                    self.model_stacked_widget.addWidget(lbl)
-                    self.gl_viewport = None
 
-            self.model_stacked_widget.setCurrentIndex(1)
-            self.btn_toggle_3d.setText("返回图片")
+                # Show loading page
+                self.btn_toggle_3d.setEnabled(False)
+                self.btn_toggle_3d.setText("正在加载...")
+
+                if not hasattr(self, 'loading_label'):
+                    self.loading_label = QLabel("正在加载 3D 模型，请稍候...")
+                    self.loading_label.setAlignment(Qt.AlignCenter)
+                    self.model_stacked_widget.addWidget(self.loading_label)
+                self.model_stacked_widget.setCurrentWidget(self.loading_label)
+
+                self.logger.info("开始异步加载 3D 模型")
+
+                # Run loader in background thread
+                from PySide6.QtCore import QThread, Signal, QObject
+                class LoadWorker(QObject):
+                    finished = Signal(object)
+                    def run(self):
+                        from .widgets.model_loader import ModelLoader
+                        loader = ModelLoader(model_root=model_root)
+                        res = loader.load_best_available_model()
+                        self.finished.emit(res)
+
+                self.load_thread = QThread()
+                self.load_worker = LoadWorker()
+                self.load_worker.moveToThread(self.load_thread)
+
+                self.load_thread.started.connect(self.load_worker.run)
+                self.load_worker.finished.connect(self._on_model_loaded)
+                self.load_worker.finished.connect(self.load_thread.quit)
+                self.load_worker.finished.connect(self.load_worker.deleteLater)
+                self.load_thread.finished.connect(self.load_thread.deleteLater)
+                self.load_thread.start()
+            else:
+                self.model_stacked_widget.setCurrentWidget(self.gl_viewport)
+                self.btn_toggle_3d.setText("返回图片")
+                self.logger.info("3D 模型已缓存，直接显示")
         else:
             # Switch to Image View
             self.model_stacked_widget.setCurrentIndex(0)
             self.btn_toggle_3d.setText("查看 3D 模型")
+
+    def _on_model_loaded(self, result):
+        self.btn_toggle_3d.setEnabled(True)
+        if result.success:
+            self.logger.info(f"3D 模型加载完成，模型类型：{result.model_type}")
+        else:
+            self.logger.warning(f"3D 模型加载失败：{result.message}")
+
+        try:
+            self.gl_viewport = ModelViewer(preload_result=result)
+            self.gl_viewport.set_theme(self.current_theme)
+            self.model_stacked_widget.addWidget(self.gl_viewport)
+        except Exception as e:
+            self.logger.error(f"3D 视图创建失败: {e}")
+            lbl = QLabel(f"3D模型视图初始化失败:\n{e}")
+            lbl.setAlignment(Qt.AlignCenter)
+            self.model_stacked_widget.addWidget(lbl)
+            self.gl_viewport = None
+            self.model_stacked_widget.setCurrentWidget(lbl)
+
+        if self.model_stacked_widget.currentWidget() == getattr(self, 'loading_label', None):
+            if self.gl_viewport:
+                self.model_stacked_widget.setCurrentWidget(self.gl_viewport)
+            self.btn_toggle_3d.setText("返回图片")
 
     def toggle_theme(self):
         if self.current_theme == 'light':
