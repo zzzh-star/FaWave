@@ -185,9 +185,12 @@ class ModelViewer(QWidget):
                 self.load_best_available_model()
 
     def load_best_available_model(self):
-        if self._view is None:
+        if self._view is None or self.loader is None:
             return
         result = self.loader.load_best_available_model()
+        self._apply_model_result(result)
+
+    def _apply_model_result(self, result):
         import logging
         logger = logging.getLogger("ModelViewer")
         for line in result.logs:
@@ -199,7 +202,6 @@ class ModelViewer(QWidget):
         self._clear_meshes()
         self._model_rotation = np.eye(3)
         if result.success:
-            import logging
             logging.getLogger("ModelViewer").info(f"三维模型加载成功，模型类型：{result.model_type}")
             self._base_parts = self._normalize_parts(result.parts)
             self._view.scene_radius = max(0.8, float(self._scene_extent) * 0.5)
@@ -207,15 +209,14 @@ class ModelViewer(QWidget):
             self._status = {
                 "loaded": True,
                 "model_type": result.model_type,
-                "model_path": result.model_path,
+                "model_path": getattr(result, "path", getattr(result, "model_path", "")),
                 "part_count": len(self._base_parts),
                 "fallback": False,
                 "message": "彩色装配体模型加载成功" if result.model_type in {"glb", "gltf", "obj"} else "STL 几何模型加载成功",
             }
-            self._hint.setText("")
+            self._hint.hide()
         else:
             self._base_parts = []
-            import logging
             logging.getLogger("ModelViewer").warning(f"三维模型加载失败，原因：{result.message}。已切换为简化模型")
             self._add_fallback_cube()
             self._status = {
