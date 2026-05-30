@@ -140,9 +140,10 @@ class InteractiveGLViewWidget(gl.GLViewWidget):
 
 
 class ModelViewer(QWidget):
-    def __init__(self, model_root: str | None = None, parent=None):
+    def __init__(self, model_root: str | None = None, parent=None, preload_result=None):
         super().__init__(parent)
-        self.loader = ModelLoader(model_root=model_root)
+        self.loader = ModelLoader(model_root=model_root) if preload_result is None else None
+        self._preload_result = preload_result
         self._status = {"loaded": False, "model_type": "fallback", "model_path": "", "part_count": 0, "fallback": True, "message": "初始化"}
         self._mesh_items = []
         self._base_parts: list[MeshPart] = []
@@ -178,7 +179,10 @@ class ModelViewer(QWidget):
             self._view.addItem(self._grid)
             self._setup_force_items()
             self.set_theme("dark")
-            self.load_best_available_model()
+            if hasattr(self, '_preload_result') and self._preload_result is not None:
+                self._apply_model_result(self._preload_result)
+            else:
+                self.load_best_available_model()
 
     def load_best_available_model(self):
         if self._view is None:
